@@ -2,7 +2,7 @@ let shortId = require('shortid');
 
 const User = require('../../models/user');
 
-const Auth = require('../../routes/auth/Auth');
+const Auth = require('../../routes/auth/auth');
 const ErrorCodes = require('../../configs/errorcodes');
 const done = require('../../configs/constants').done;
 
