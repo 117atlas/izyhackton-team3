@@ -1,5 +1,4 @@
 /node_modules/
-/routes/tests.js
 /tests/
 /.env
 /td.json
