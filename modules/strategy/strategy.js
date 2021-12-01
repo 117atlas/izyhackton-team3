@@ -10,12 +10,33 @@ const Socket = require('../binance/socket');
 
 const Triplet = require('./triplet');
 const Profit = require('./profit');
+const Statistics = require('./statistics');
 
 const Trade = require('../../models/trade');
 const Order = require('../../models/order');
 
+const SocketIO = require('../socketio/socketio');
+
 let tripletCombUpdaterId = null;
 let endOfDayRestartId = null;
+
+const StrategyData = {
+    tripletsNb: [],
+    tripletsChecked: [],
+    tripletsTimes: [],
+    mdPairsTimes: {}
+};
+
+let Winners = [];
+let WinnersObsPeriod = "daily", WinnersObsPeriodReference = 0;
+let ProfitObsPeriod = "daily", ProfitObsPeriodReference = 0;
+
+const StrategyUpdateMethod = "second"; //second, real_time
+
+let StrategyTimeOutId = null;
+let SecondUpdatesIntervalId = null;
+
+let INITIAL_AMOUNT = 0;
 
 const tripletCombinationUpdater = function (autoProcessVars) {
     tripletCombUpdaterId = setInterval(async () => {
@@ -50,7 +71,8 @@ const StrategyOn = async function () {
     }
     let autoProcessVars = await Variables.getAutoProcessesVariables();
     console.log(autoProcessVars);
-    Winners = await Trade.find({trade_date: {$gte: DateUtils.startOfDayTime(Date.now())}})
+    WinnersObsPeriodReference = Date.now();
+    Winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(Date.now(), WinnersObsPeriod)}})
         .populate({path: 'orders'})
         .exec();
     console.log(Winners);
@@ -62,13 +84,18 @@ const StrategyOn = async function () {
         if (err) {
             await State.deleteOne({current: true}).exec();
             AppState.APP_STATE = null;
-            // Send Result to UI via SocketIO
+
+            SocketIO.broadcast(SocketIO.MESSAGES.BINANCE_CONNECTION_ERROR, err.message);
+            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE_VALUES.OFF);
         }
         else {
             AppState.APP_STATE = await State.findOneAndUpdate({current: true}, {state: state}, {new: true}).exec();
             tripletCombinationUpdater(autoProcessVars);
             endOfDayScheduler(autoProcessVars);
-            // Send Result to UI via SocketIO
+
+            SocketIO.broadcast(SocketIO.MESSAGES.BINANCE_CONNECTION_SUCCESS, true);
+            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE["state"]);
+
             StrategyStart(true);
         }
     });
@@ -90,35 +117,14 @@ const StrategyOff = async function () {
         clearInterval(SecondUpdatesIntervalId);
         SecondUpdatesIntervalId = null;
     }
+    WinnersObsPeriodReference = 0;
+    Winners = [];
     await Socket.closeConnection();
 }
 
 const StrategyAutoRestart = async function () {
 
 }
-
-
-
-
-
-
-const StrategyData = {
-    tripletsNb: [],
-    tripletsChecked: [],
-    tripletsTimes: [],
-    mdPairsTimes: {}
-};
-
-let Winners = [];
-let PreviousWinners = [];
-
-const WinnersObsPeriod = "daily";
-const StrategyUpdateMethod = "second"; //second, real_time
-
-let StrategyTimeOutId = null;
-let SecondUpdatesIntervalId = null;
-
-let INITIAL_AMOUNT = 0;
 
 const changeInitialAmount = async function (params) {
     let change = await Variables.changeVariable({name: "initialAmount", new_value: params["new_initial_amount"]});
@@ -127,18 +133,39 @@ const changeInitialAmount = async function (params) {
     return change;
 }
 
+
+const ChangeWinnersObsPeriod = async function (period) {
+    try {
+        if (!["hourly", "daily", "monthly", "yearly"].includes(period)) {
+            period = "daily";
+        }
+        if (period !== WinnersObsPeriod) {
+            let newRef = Date.now();
+            let _winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(newRef, period)}})
+                .populate({path: 'orders'})
+                .exec();
+            WinnersObsPeriod = period;
+            WinnersObsPeriodReference = newRef;
+            Winners = _winners;
+        }
+    } catch (e) {
+        console.log("ChangeWinnersObsPeriod error - " + e.message);
+        console.error(e);
+    }
+}
+
 const StrategyStart = function (delay = false) {
     if (AppState.APP_STATE != null && AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON) {
         if (delay) {
             StrategyTimeOutId = setTimeout(()=> {
                 console.log("Strategy process go");
-                Strategy().then().catch((e)=>{});
-            }, 50);
+                Strategy();
+            }, 100);
             console.log("Strategy process scheduled to be happen in 50 ms");
         }
         else {
             StrategyTimeOutId = null;
-            Strategy().then().catch((e)=>{});
+            Strategy();
         }
         if (StrategyUpdateMethod === "second") {
             if (SecondUpdatesIntervalId == null) {
@@ -166,7 +193,91 @@ const StrategyStart = function (delay = false) {
     }
 }
 
-const Strategy = async function () {
+const Strategy = function () {
+    Triplet.getTotalCombinations().then(tripletData => {
+        let socketData = Socket.getBookTickerData(); //require('../../tests/socketresponse2.json'); //await Socket.getBookTickerData();
+        let dataForUi = {};
+        if (!tripletData || !tripletData.marketData || !tripletData.triplets || !tripletData.triplets.length) {
+            // Send Infos to UI
+            StrategyStart(true);
+            return;
+        }
+        if (!socketData["bookTicker"] || Object.keys(socketData["bookTicker"]).length === 0 || !socketData["updatedMdpIds"] || !socketData["updatedMdpIds"].length) {
+            // Send Infos to UI
+            console.log(socketData["bookTicker"] == null);
+            if (socketData["bookTicker"] != null) console.log(Object.keys(socketData["bookTicker"]).length);
+            console.log(socketData["updatedMdpIds"] == null);
+            if (socketData["updatedMdpIds"] != null) console.log(!socketData["updatedMdpIds"].length);
+            StrategyStart(true);
+            return;
+        }
+        let start = Date.now();
+        Profit(tripletData, socketData["bookTicker"], socketData["updatedMdpIds"], INITIAL_AMOUNT).then(p => {
+            if (p == null) {
+                // Send Infos to UI
+                StrategyStart(true);
+                return;
+            }
+            let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"];
+            INITIAL_AMOUNT = p["initialUsdAmount"];
+            Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT}).then();
+            StrategyData.tripletsNb.push(tripletData.triplets.length);
+            StrategyData.tripletsChecked.push(nBTripletsToCheck);
+            StrategyData.tripletsTimes.push(trades.length > 0 ? trades.map((t) => t.time).reduce((a, b)=> a+b, 0)/trades.length : 0);
+            mdPairsTimes.forEach((elm) => {
+                StrategyData.mdPairsTimes[elm.mdp] = StrategyData.mdPairsTimes[elm.mdp] || [];
+                StrategyData.mdPairsTimes[elm.mdp].push(elm.time);
+            });
+            let _trades = trades
+                .sort((a, b)=>{
+                    if (a["profit"] > b["profit"]) return -1;
+                    else if (a["profit"] < b["profit"]) return 1;
+                    return 0;
+                })
+            if (_trades.length > 20) {
+                _trades = _trades.slice(0, 20);
+            }
+            dataForUi.trades = _trades;
+
+            let winners = trades.filter((t)=>t.profit > 1);
+            if (winners.length > 0) {
+                saveWinners(winners)
+                    .then()
+                    .catch((e)=>{});
+            }
+            if (DateUtils.SamePeriod(WinnersObsPeriodReference, Date.now(), WinnersObsPeriod)) {
+                Winners = Winners.concat(winners);
+                WinnersObsPeriodReference = Date.now();
+            } else {
+                Winners = [].concat(winners);
+            }
+            dataForUi.winners = Winners;
+
+            console.log(trades.length + " trades found and " + winners.length + " winners detected");
+
+            //dataForUi.newWinners = winners;
+            let end = DateUtils.now();
+            dataForUi.strategyTime = end - start;
+
+            require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+            console.log("Live (strategy) updates executed");
+
+            SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
+
+            StrategyStart(false);
+        }).catch((err)=>{
+            // Send Infos to UI
+            console.log(err.message);
+            StrategyStart(true);
+        })
+    }).catch((err)=>{
+        // Send Infos to UI
+        StrategyStart(true);
+    });
+
+}
+
+const Strategy___OLD = async function () {
     try {
         if (StrategyUpdateMethod === "real_time") {
             let tripletData = await Triplet.getTotalCombinations();
@@ -222,23 +333,27 @@ const Strategy = async function () {
                     .then()
                     .catch((e)=>{});
             }
-            Winners = Winners.concat(winners);
-            if (WinnersObsPeriod === "daily") {
-                dataForUi.winners = [].concat(Winners);
+            if (DateUtils.SamePeriod(WinnersObsPeriodReference, Date.now(), WinnersObsPeriod)) {
+                Winners = Winners.concat(winners);
+                WinnersObsPeriodReference = Date.now();
             } else {
-                dataForUi.winners = PreviousWinners.concat(Winners);
+                Winners = [].concat(winners);
             }
-            //dataForUi.newWinners = winners;
+            dataForUi.winners = Winners;
+            dataForUi.winners = Winners;
+
             let end = DateUtils.now();
             dataForUi.pingLag = socketData["pingLag"];
             dataForUi.strategyTime = end - start;
             dataForUi.toFrontEndTime = Date.now();
-            // Send data to UI
+
+            SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
+
             StrategyStart(false);
         }
         else if (StrategyUpdateMethod === "second") {
             let tripletData = await Triplet.getTotalCombinations();
-            let socketData = await Socket.getBookTickerData(); //require('../../tests/socketresponse2.json'); //await Socket.getBookTickerData();
+            let socketData = Socket.getBookTickerData(); //require('../../tests/socketresponse2.json'); //await Socket.getBookTickerData();
             let dataForUi = {};
             if (!tripletData || !tripletData.marketData || !tripletData.triplets || !tripletData.triplets.length) {
                 // Send Infos to UI
@@ -277,22 +392,32 @@ const Strategy = async function () {
                 _trades = _trades.slice(0, 20);
             }
             dataForUi.trades = _trades;
+
             let winners = trades.filter((t)=>t.profit > 1);
             if (winners.length > 0) {
                 saveWinners(winners)
                     .then()
                     .catch((e)=>{});
             }
-            Winners = Winners.concat(winners);
-            if (WinnersObsPeriod === "daily") {
-                dataForUi.winners = [].concat(Winners);
+            if (DateUtils.SamePeriod(WinnersObsPeriodReference, Date.now(), WinnersObsPeriod)) {
+                Winners = Winners.concat(winners);
+                WinnersObsPeriodReference = Date.now();
             } else {
-                dataForUi.winners = PreviousWinners.concat(Winners);
+                Winners = [].concat(winners);
             }
+            dataForUi.winners = Winners;
+
+            console.log(trades.length + " trades found and " + winners.length + " winners detected");
+
             //dataForUi.newWinners = winners;
             let end = DateUtils.now();
             dataForUi.strategyTime = end - start;
-            // Send data to UI
+
+            require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+            console.log("Live (strategy) updates executed");
+
+            SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
+
             StrategyStart(false);
         }
 
@@ -342,7 +467,13 @@ const SecondUpdates = async function () {
         dataForUi.msgCount = socketData.msgCount;
         dataForUi.pingLag = socketData["pingLag"];
         dataForUi.toFrontEndTime = Date.now();
+        dataForUi.profitStats = await Statistics.profitStatistics(WinnersObsPeriod, Winners);
+
+        require('fs').writeFileSync("./tests/logs/seconds_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+        console.log("Second updates executed");
+
         // Send data to UI
+        SocketIO.broadcast(SocketIO.MESSAGES.SECOND_PERIODIC, dataForUi);
     } catch (e) {
 
     }
@@ -353,6 +484,7 @@ const saveWinners = function (winners) {
         try {
             for (const _winner of winners) {
                 let ordersIds = await Order.create(_winner["orders"]);
+                ordersIds = ordersIds.map(x => x["_id"]);
                 let winner = new Trade();
                 winner.trade_id = _winner.trade_id;
                 winner.trade_date = _winner.trade_date;
@@ -378,5 +510,5 @@ const saveWinners = function (winners) {
 }
 
 module.exports = {
-    StrategyOn, StrategyOff, StrategyStart, changeInitialAmount, Strategy
+    StrategyOn, StrategyOff, StrategyStart, changeInitialAmount, Strategy, ChangeWinnersObsPeriod
 }

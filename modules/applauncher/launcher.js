@@ -8,7 +8,7 @@ const State = require('../../models/state');
 
 const DateUtils = require('../dateutils');
 
-const on = async function () {
+const on = async function (user = null) {
     try {
         let currentState = await State.findOne({current: true}).exec();
         if (currentState != null && currentState["state"] === "ON") {
@@ -24,6 +24,9 @@ const on = async function () {
         nState.off_date = 0;
         await nState.save();
 
+        const SocketIO = require('../socketio/socketio');
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+
         let o = await Strategy.StrategyOn();
         if (o != null && typeof o === "string") {
             return Constants.done(null, null, -1, o);
@@ -34,14 +37,14 @@ const on = async function () {
 
         console.log(AppState.APP_STATE);
 
-        return Constants.done(null, {state: nState["state"]}, 0);
+        return Constants.done(null, {state: nState}, 0);
     } catch (e) {
         console.log(e);
         return Constants.done(e, null, -1);
     }
 }
 
-const off = async function () {
+const off = async function (user = null) {
     try {
         let currentState = await State.findOne({current: true}).exec();
         if (currentState["state"] === "OFF") {
@@ -52,13 +55,17 @@ const off = async function () {
 
         let nState = await State.findOneAndUpdate({current: true}, {state: AppState.APP_STATE_VALUES.OFF, off_date: Date.now()}, {new: true}).exec();
         AppState.APP_STATE = nState;
-        return Constants.done(null, {state: nState["state"]}, 0);
+
+        const SocketIO = require('../socketio/socketio');
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+
+        return Constants.done(null, {state: nState}, 0);
     } catch (e) {
         return Constants.done(e, null, -1);
     }
 }
 
-const restart = async function () {
+const restart = async function (user = null) {
     try {
         let currentState = AppState.APP_STATE;
         if (currentState == null) {
@@ -89,12 +96,30 @@ const restart = async function () {
         if (AppState.APP_STATE == null || AppState.APP_STATE["state"] !== AppState.APP_STATE_VALUES.ON)
             AppState.APP_STATE = nState;
 
-        return Constants.done(null, {state: nState["state"]}, 0);
+        const SocketIO = require('../socketio/socketio');
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_RESTARTED, true, user);
+
+        return Constants.done(null, {state: nState}, 0);
     } catch (e) {
         return Constants.done(e, null, -1);
     }
 }
 
+const state = async function () {
+    let currentState = AppState.APP_STATE;
+    if (currentState == null) {
+        currentState = await State.findOne({current: true}).exec();
+        AppState.APP_STATE = currentState;
+    }
+    return Constants.done(null, {state: currentState == null ? null : currentState}, 0);
+}
+
+const changeObsPeriod = async function (params) {
+    if (params["period"] != null)
+        await Strategy.ChangeWinnersObsPeriod(params["period"]);
+}
+
 module.exports = {
-    on, off, restart
+    on, off, restart, state, changeObsPeriod
 }

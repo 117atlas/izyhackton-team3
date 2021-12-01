@@ -24,7 +24,7 @@ const getMarketData = async function () {
     }
     if (marketData != null && Object.keys(marketData).length > 0) {
         let mdsKeys = Object.keys(marketData);
-        let pairs = {}, pairsIds = {}, rvPairs = {};
+        let pairs = {}, pairsIds = {}, rvPairs = {}, idsPairs = {};
         mdsKeys.forEach((key) => {
             if (marketData[key]["active"] && marketData[key]["spot"]) {
                 let cur1 = key.split("/")[0], cur2 = key.split("/")[1];
@@ -47,15 +47,16 @@ const getMarketData = async function () {
                     };
                 }
                 pairsIds[key] = marketData[key]["id"];
+                idsPairs[marketData[key]["id"]] = key;
                 pairs[key] = pair;
                 rvPairs[`${cur1}/${cur2}`] = key;
                 rvPairs[`${cur2}/${cur1}`] = key;
             }
         });
-        MARKET_DATA = pairs;
+        /*MARKET_DATA = pairs;
         MARKET_DATA_IDS = pairsIds;
-        MARKET_DATA_PAIRS = rvPairs;
-        return {mdPairsData: pairs, mdPairsToMdpIds: pairsIds, mdCurPairsToMdPairs: rvPairs};
+        MARKET_DATA_PAIRS = rvPairs;*/
+        return {mdPairsData: pairs, mdPairsToMdpIds: pairsIds, mdCurPairsToMdPairs: rvPairs, mdpIdsToMdPairs: idsPairs};
     }
     return null;
 }

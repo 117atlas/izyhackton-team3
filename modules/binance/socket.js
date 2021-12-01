@@ -47,10 +47,12 @@ const __clearLogsTicker = async function () {
 
 const wsPing = function () {
     if (SocketData["ws"] != null && SocketData["ws"].readyState === WebSocket.OPEN) {
-        wsPingId = setTimeout(()=>{
+        wsPingId = setInterval(()=>{
             wsPingStart = Date.now();
             SocketData["ws"].ping(JSON.stringify({u: 42042042, s: "XXXYYY", b: 0, a: 0, B: 0, A: 0}));
+            console.log("WS Ping Sent");
         }, 1000);
+        console.log("WS Ping Pong scheduled");
     }
 }
 
@@ -64,7 +66,7 @@ const openConnection = function (callback) {
         ws.send(JSON.stringify({method: 'SUBSCRIBE', params: ['!bookTicker'], id: 1}));
 
         //logsTickerClearer();
-        wsPing();
+        //wsPing();
 
         callback(null, AppState.APP_STATE_VALUES.ON);
     });
@@ -73,6 +75,7 @@ const openConnection = function (callback) {
         let dataStr = Buffer.from(buffer);
         const data = JSON.parse(Buffer.from(dataStr));
         if (data.stream && (data.stream.split('@')[1] === 'bookTicker' || data.stream === '!bookTicker')){
+            //console.log(JSON.stringify(data));
             SocketData.msgCount += 1;
             let {
                 u, s, b, a, B, A,
@@ -117,11 +120,13 @@ const openConnection = function (callback) {
     });
 
     ws.on('pong', function() {
+        console.log("Pong received")
         if (wsPingStart > 1000000) {
             SocketData.pingBinanceLags.push(Date.now() - wsPingStart);
             wsPingStart = 0;
         }
-        wsPing();
+        console.log(SocketData.pingBinanceLags);
+        //wsPing();
     })
 
     SocketData.ws = ws;
@@ -133,7 +138,7 @@ const closeConnection = function () {
         SocketData["ws"].close();
     }
     if (wsPingId != null){
-        clearTimeout(wsPingId);
+        clearInterval(wsPingId);
         wsPingId = null;
     }
     if (clearLogsTickerId != null){

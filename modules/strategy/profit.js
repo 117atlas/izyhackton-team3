@@ -285,7 +285,7 @@ const convertToBNB = async function (amount, coin, bookTicker, tripletsData) {
 const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds, varInitAmt) {
     let trades = [];
     let triplets = tripletsData["triplets"];
-
+    let s = Date.now();
     let strategyVars = await Variables.getStrategyVariables();
     let valStVars = Variables.validateStrategyVars(strategyVars);
     if (valStVars["error"]) {
@@ -294,7 +294,23 @@ const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds,
     let defaultFees = strategyVars["defaultTradeFee"];
     let useDefaultFees = strategyVars["useDefaultTradeFee"];
 
-    let filteredTriplets = triplets
+    if (updatedMdpIds.length === 0) {
+        return null;
+    }
+    let filteredTriplets = updatedMdpIds
+        .map(x => tripletsData["marketData"]["mdpIdsToMdPairs"][x])
+        .filter(mdp => tripletsData["mdpToTriplets"][mdp] != null)
+        .map(mdp => tripletsData["mdpToTriplets"][mdp])
+        .flat()
+        .filter((value, index, arr)=> arr.indexOf(value) === index)
+        .map(tripletId => {return {triplet: triplets[tripletId], index: tripletId}});
+
+    if (filteredTriplets.length === 0) {
+        return null;
+    }
+
+    //mdpIdsToMdPairs
+    /*let filteredTriplets = triplets
         .map((triplet, index) => {
             let tripletRelatedMdpIds = Object.keys(tripletsData["mdpToTriplets"])
                 .filter((mdp) => {
@@ -312,11 +328,9 @@ const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds,
                 return null;
             }
         })
-        .filter(t => t != null);
+        .filter(t => t != null);*/
 
-    if (filteredTriplets.length === 0) {
-        return null;
-    }
+
     let nBTripletsToCheck = filteredTriplets.length;
 
     let initialUsdAmount = varInitAmt;
@@ -326,7 +340,15 @@ const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds,
 
         let triplet = filteredTriplets[i]["triplet"];
         let tripletId = filteredTriplets[i]["index"];
-        let crypto = triplet[0];
+        //let crypto = triplet[0];
+        let crypto = null;
+        try {
+            crypto = triplet[0];
+        } catch (e) {
+            console.log(filteredTriplets[i]);
+            throw e;
+        }
+
         let initialAmount = convertInitialAmount(strategyVars, initialUsdAmount, crypto, bookTicker, tripletsData);
         if (initialAmount == null){
             continue;
@@ -454,14 +476,15 @@ const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds,
             const finalUsdAmount = convertFinalAmount(strategyVars, amount, triplet[0], bookTicker, tripletsData);
             let usdProfit = new Decimal(0);
             if (profit.gt(1)) {
-                usdProfit = convertFinalAmount(strategyVars, amount.mul(profit.sub(1)), triplet[0], bookTicker, tripletsData);
+                //usdProfit = convertFinalAmount(strategyVars, amount.mul(profit.sub(1)), triplet[0], bookTicker, tripletsData);
+                usdProfit = convertFinalAmount(strategyVars, amount.sub(fees).sub(initialAmount), triplet[0], bookTicker, tripletsData);
                 initialUsdAmount = finalUsdAmount.toNumber();
             }
             trades.push({
                 trade_id: shortId.generate(),
                 exchange: "BNB",
                 trade_date: DateUtils.now(),
-                triplet,
+                triplet: triplet.join("-"),
                 tripletId,
                 initial_amount: initialAmount.toNumber(),
                 final_amount: amount.toNumber(),

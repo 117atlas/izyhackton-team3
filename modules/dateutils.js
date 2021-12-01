@@ -1,3 +1,5 @@
+const { getYearStart, getMonthStart } = require('@wojtekmaj/date-utils');
+
 const VarData = require('./variables/vardata');
 
 const TIMEZONE_OFFSET = -8;
@@ -213,6 +215,35 @@ const StartOfDayTimeA = function (autoResetPeriod = "1d", thisDateTime = null) {
     return 0;
 }
 
+const StartOfPeriodTime = function (now, period = "daily") {
+    if (period === "hourly") {
+        let sop = new Date(now);
+        sop.setUTCMinutes(0, 0, 0);
+        return sop.getTime();
+    }
+    else if (period === "daily") {
+        return StartOfDayTime(now);
+    }
+    else if (period === "monthly") {
+        let sop = new Date(now - TIMEZONE_OFFSET*60*60*1000);
+        sop = new Date(sop.getTime() + new Date().getTimezoneOffset()*60*1000);
+        sop = getMonthStart(sop);
+        sop = new Date(sop.getTime() - new Date().getTimezoneOffset()*60*1000);
+        return sop.getTime() + TIMEZONE_OFFSET*60*60*1000;
+    }
+    else if (period === "yearly") {
+        let sop = new Date(now - TIMEZONE_OFFSET*60*60*1000);
+        sop = new Date(sop.getTime() + new Date().getTimezoneOffset()*60*1000);
+        sop = getYearStart(sop);
+        sop = new Date(sop.getTime() - new Date().getTimezoneOffset()*60*1000);
+        return sop.getTime() + TIMEZONE_OFFSET*60*60*1000;
+    }
+}
+
+const SamePeriod = function (reference, now, period = "daily") {
+    return StartOfPeriodTime(reference, period) === StartOfPeriodTime(now, period);
+}
+
 const RemainingTime = function (milliseconds) {
     let seconds = Math.round(milliseconds / 1000);
     let minutes = Math.floor(seconds / 60);
@@ -222,10 +253,58 @@ const RemainingTime = function (milliseconds) {
     return hours + " hours, " + minutes + " minutes and " + seconds + " seconds";
 }
 
+const PrintDate = function (time, timezone = false) {
+    let date = new Date(time - TIMEZONE_OFFSET*60*60*1000);
+    let day = date.getUTCDate(), month = date.getUTCMonth()+1, year = date.getUTCFullYear();
+    if (day.toString(10).length === 1) day = "0"+day;
+    if (month.toString(10).length === 1) month = "0"+month;
+    let printTimeZone = "";
+    if (timezone) {
+        printTimeZone = (-TIMEZONE_OFFSET) > 0 ? ("+" + TIMEZONE_OFFSET) : ("-" + Math.abs(TIMEZONE_OFFSET));
+        printTimeZone = " - GMT " + printTimeZone;
+    }
+    return day + "/" + month + "/" + year + printTimeZone;
+}
+
+const PrintTime = function (time) {
+    let date = new Date(time - TIMEZONE_OFFSET*60*60*1000);
+    let hours = date.getUTCHours(), minutes = date.getUTCMinutes()+1, seconds = date.getUTCSeconds(), millis = date.getUTCMilliseconds();
+    if (hours.toString(10).length === 1) hours = "0"+hours;
+    if (minutes.toString(10).length === 1) minutes = "0"+minutes;
+    if (seconds.toString(10).length === 1) seconds = "0"+seconds;
+    if (millis.toString(10).length === 1) millis = "00"+millis;
+    else if (millis.toString(10).length === 2) millis = "0"+millis;
+    return hours + ":" + minutes + ":" + seconds + ":" + millis;
+}
+
+const PrintDateTime = function (time, timezone = false) {
+    let date = new Date(time - TIMEZONE_OFFSET*60*60*1000);
+    let day = date.getUTCDate(), month = date.getUTCMonth()+1, year = date.getUTCFullYear();
+    let hours = date.getUTCHours(), minutes = date.getUTCMinutes()+1, seconds = date.getUTCSeconds(), millis = date.getUTCMilliseconds();
+    if (day.toString(10).length === 1) day = "0"+day;
+    if (month.toString(10).length === 1) month = "0"+month;
+    if (hours.toString(10).length === 1) hours = "0"+hours;
+    if (minutes.toString(10).length === 1) minutes = "0"+minutes;
+    if (seconds.toString(10).length === 1) seconds = "0"+seconds;
+    if (millis.toString(10).length === 1) millis = "00"+millis;
+    else if (millis.toString(10).length === 2) millis = "0"+millis;
+    let printTimeZone = "";
+    if (timezone) {
+        printTimeZone = (-TIMEZONE_OFFSET) > 0 ? ("+" + TIMEZONE_OFFSET) : ("-" + Math.abs(TIMEZONE_OFFSET));
+        printTimeZone = " - GMT " + printTimeZone;
+    }
+    return day + "/" + month + "/" + year + " " + hours + ":" + minutes + ":" + seconds + ":" + millis + printTimeZone;
+}
+
 module.exports = {
     now: function () { return Date.now(); },
     // 5mn, 10mn, 15mn, 30mn, 1h, 6h, 12h, 1d, 1mo, 3mo, 6mo
     endOfDayTime: EndOfDayTime,
     startOfDayTime: StartOfDayTime,
-    RemainingTime: RemainingTime
+    RemainingTime: RemainingTime,
+    PrintDate: PrintDate,
+    PrintTime: PrintTime,
+    PrintDateTime: PrintDateTime,
+    StartOfPeriodTime: StartOfPeriodTime,
+    SamePeriod: SamePeriod
 }
