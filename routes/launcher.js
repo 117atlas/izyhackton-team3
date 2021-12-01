@@ -26,9 +26,6 @@ router.get('/state', async function(req, res, next) {
     res.send(response);
 });
 
-router.patch('/observation-period', async function(req, res, next) {
-    res.send({error: false, error_code: 0, error_message: null});
-    Launcher.changeObsPeriod(req.body["period"]).then();
-});
+
 
 module.exports = router;
