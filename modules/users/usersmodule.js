@@ -32,7 +32,7 @@ const register = async function (params) {
 const login = async function (params) {
     let login = params["login"], password = params["password"];
     try {
-        let user = await User.findOne({$or: [{user_name: login}, {email: login}], deleted_account: {$ne: true}}).exec();
+        let user = await User.findOne({$or: [{username: login}, {email: login}], deleted_account: {$ne: true}}).exec();
         if (user == null) return done(null, null, ErrorCodes.CODES.USER_NOT_EXISTS);
         //else if (user["deleted_account"]) return done(null, null, ErrorCodes.CODES.USER_ACCOUNT_DELETED);
         else if (!user.isValidPassword(password)) return done(null, null, ErrorCodes.CODES.USER_INCORRECT_PASSWORD);
