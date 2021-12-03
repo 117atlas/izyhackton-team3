@@ -282,7 +282,6 @@ const convertToBNB = async function (amount, coin, bookTicker, tripletsData) {
 }
 
 const calculateProfit = function (strategyVars, tripletsData, bookTicker, updatedMdpIds, varInitAmt) {
-    console.log({strategyVars, tripletsData, bookTicker, updatedMdpIds, varInitAmt})
     try {
 
         let triplets = tripletsData["triplets"];

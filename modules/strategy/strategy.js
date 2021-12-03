@@ -483,7 +483,7 @@ const Strategy = async function () {
             console.error(err);
         });
         child.on('disconnect', () => {
-            console.log("Child is disconnected - ", err.message);
+            console.log("Child is disconnected");
         });
 
         child.send({
