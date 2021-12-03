@@ -42,7 +42,7 @@ const __formatVarName = function (name) {
     let i = 0;
     while (i < name.length) {
         let character = name.substring(i, i+1);
-        if (character.toUpperCase() === character) {
+        if (character !== "_" && character.toUpperCase() === character) {
             let left = name.substring(0, i);
             let right = "";
             if (i + 1 < name.length) right = name.substring(i+1);
@@ -84,6 +84,7 @@ const changeVariable = async function (params) {
     let _name = params["name"], newValue = params["new_value"];
     try {
         let name = __formatVarName(_name);
+        console.log(name);
         let variable = await Variable.findOne({name: name}).exec();
         if (variable == null) {
             return Constants.done(null, null, ErrorCodes.INVALID_VARIABLE_NAME);

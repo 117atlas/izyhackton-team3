@@ -1,4 +1,5 @@
 let shortId = require('shortid');
+const { fork } = require('child_process');
 
 const Variables = require('../variables/variables');
 const DateUtils = require('../dateutils');
@@ -15,7 +16,7 @@ const Statistics = require('./statistics');
 const Trade = require('../../models/trade');
 const Order = require('../../models/order');
 
-const SocketIO = require('../socketio/socketio');
+const SocketIO = require('../socketio/websocket');
 
 let tripletCombUpdaterId = null;
 let endOfDayRestartId = null;
@@ -169,19 +170,14 @@ const ChangeWinnersObsPeriod = async function (period) {
     }
 }
 
-const StrategyStart = function (delay = false) {
+const StrategyStart = function (_delay = false) {
     if (AppState.APP_STATE != null && AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON) {
-        if (delay) {
-            StrategyTimeOutId = setTimeout(()=> {
-                console.log("Strategy process go");
-                Strategy();
-            }, 100);
-            console.log("Strategy process scheduled to be happen in 50 ms");
-        }
-        else {
-            StrategyTimeOutId = null;
-            setTimeout(()=>{Strategy()}, 0);
-        }
+        let delay = 50 * _delay;
+        StrategyTimeOutId = setTimeout(()=> {
+            console.log("Strategy process go");
+            Strategy().then();
+        }, delay);
+        console.log("Strategy process scheduled to be happen in ", delay, " ms");
         if (StrategyUpdateMethod === "second") {
             if (SecondUpdatesIntervalId == null) {
                 SecondUpdatesIntervalId = setInterval(()=>{
@@ -205,97 +201,119 @@ const StrategyStart = function (delay = false) {
         }
         //StrategyTimeOutId = null;
         //SecondUpdatesIntervalId = null;
-        console.log(AppState.APP_STATE != null);
-        if (AppState.APP_STATE != null)
-            console.log(AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON)
+        //console.log(AppState.APP_STATE != null);
+        //if (AppState.APP_STATE != null) console.log(AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON)
     }
 }
 
-const SSS = function () {
-    StrategyStart(true);
-}
-
-const Strategy = function () {
-    Triplet.getTotalCombinations().then(tripletData => {
+const Strategy = async function () {
+    try {
+        let tripletData = await Triplet.getTotalCombinations();
         let socketData = Socket.getBookTickerData(); //require('../../tests/socketresponse2.json'); //await Socket.getBookTickerData();
         let dataForUi = {};
         if (!tripletData || !tripletData.marketData || !tripletData.triplets || !tripletData.triplets.length) {
             // Send Infos to UI
-            StrategyStart(true);
+            StrategyStart(2);
             return;
         }
         if (!socketData["bookTicker"] || Object.keys(socketData["bookTicker"]).length === 0 || !socketData["updatedMdpIds"] || !socketData["updatedMdpIds"].length) {
             // Send Infos to UI
-            StrategyStart(true);
+            StrategyStart(2);
+            return;
+        }
+        let strategyVars = await Variables.getStrategyVariables();
+        let valStVars = Variables.validateStrategyVars(strategyVars);
+        if (valStVars["error"]) {
+            console.error(new Error(valStVars["errorMessage"]))
+            // Send Infos to UI
+            StrategyStart(2);
             return;
         }
         let start = Date.now();
-        Profit(tripletData, socketData["bookTicker"], socketData["updatedMdpIds"], INITIAL_AMOUNT).then(p => {
-            console.log("profit calculation - ", (Date.now() - start), " ms");
-            if (p == null) {
-                // Send Infos to UI
-                StrategyStart(true);
-                return;
+
+        let child = fork(__dirname + '/profit2.js');
+
+        child.on('message', message => {
+            if (message["message"] === 'result') {
+                let p = message["result"];
+                let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"],
+                INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
+                partNum = p["partNum"];
+
+                console.log("profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
+                    strategyTime, " ms, ", p["trades"].length,
+                    " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
+                    " updated binance pairs.");
+
+                Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT}).then();//(r => console.log(r)).catch(e=>console.error(e));
+                StrategyData.tripletsNb.push(tripletData.triplets.length);
+                StrategyData.tripletsChecked.push(nBTripletsToCheck);
+                StrategyData.tripletsTimes.push(trades.length > 0 ? trades.map((t) => t.time).reduce((a, b)=> a+b, 0)/trades.length : 0);
+                mdPairsTimes.forEach((elm) => {
+                    StrategyData.mdPairsTimes[elm.mdp] = StrategyData.mdPairsTimes[elm.mdp] || [];
+                    StrategyData.mdPairsTimes[elm.mdp].push(elm.time);
+                });
+                let _trades = trades
+                    .sort((a, b)=>{
+                        if (a["profit"] > b["profit"]) return -1;
+                        else if (a["profit"] < b["profit"]) return 1;
+                        return 0;
+                    })
+                if (_trades.length > 20) {
+                    _trades = _trades.slice(0, 20);
+                }
+                dataForUi.trades = _trades;
+
+                let winners = trades.filter((t)=>t.profit > 1);
+                if (winners.length > 0) {
+                    saveWinners(winners)
+                        .then()
+                        .catch((e)=>{});
+                }
+                if (DateUtils.SamePeriod(WinnersObsPeriodReference, Date.now(), WinnersObsPeriod)) {
+                    Winners = Winners.concat(winners);
+                    WinnersObsPeriodReference = Date.now();
+                } else {
+                    Winners = [].concat(winners);
+                }
+                dataForUi.winners = Winners;
+
+                console.log(trades.length + " trades found and " + winners.length + " winners detected");
+
+                //dataForUi.newWinners = winners;
+                let end = DateUtils.now();
+                dataForUi.strategyTime = strategyTime;
+
+                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+                console.log("Live (strategy) updates executed");
+
+                SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
+
             }
-            console.log("profit calculation - ", (Date.now() - start), " ms, ", p["trades"].length,
-                " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
-                " updated binance pairs.");
-            let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"];
-            INITIAL_AMOUNT = p["initialUsdAmount"];
-            Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT}).then();
-            StrategyData.tripletsNb.push(tripletData.triplets.length);
-            StrategyData.tripletsChecked.push(nBTripletsToCheck);
-            StrategyData.tripletsTimes.push(trades.length > 0 ? trades.map((t) => t.time).reduce((a, b)=> a+b, 0)/trades.length : 0);
-            mdPairsTimes.forEach((elm) => {
-                StrategyData.mdPairsTimes[elm.mdp] = StrategyData.mdPairsTimes[elm.mdp] || [];
-                StrategyData.mdPairsTimes[elm.mdp].push(elm.time);
-            });
-            let _trades = trades
-                .sort((a, b)=>{
-                    if (a["profit"] > b["profit"]) return -1;
-                    else if (a["profit"] < b["profit"]) return 1;
-                    return 0;
-                })
-            if (_trades.length > 20) {
-                _trades = _trades.slice(0, 20);
+            else if (message["message"] === 'done') {
+                console.log("Whole strategy ended ", (Date.now() - start), " ms");
+                StrategyStart(1);
+                child.kill('SIGINT');
             }
-            dataForUi.trades = _trades;
-
-            let winners = trades.filter((t)=>t.profit > 1);
-            if (winners.length > 0) {
-                saveWinners(winners)
-                    .then()
-                    .catch((e)=>{});
+            else if (message["message"] === 'error') {
+                console.log("Calculate profit error");
+                console.error(message["error_stack"]);
+                StrategyStart(2);
+                child.kill('SIGINT');
             }
-            if (DateUtils.SamePeriod(WinnersObsPeriodReference, Date.now(), WinnersObsPeriod)) {
-                Winners = Winners.concat(winners);
-                WinnersObsPeriodReference = Date.now();
-            } else {
-                Winners = [].concat(winners);
-            }
-            dataForUi.winners = Winners;
+        });
 
-            console.log(trades.length + " trades found and " + winners.length + " winners detected");
+        child.send({
+            message: 'start',
+            params: {strategyVars, tripletsData: tripletData, bookTicker: socketData["bookTicker"],
+                updatedMdpIds: socketData["updatedMdpIds"], varInitAmt: INITIAL_AMOUNT}
+        });
 
-            //dataForUi.newWinners = winners;
-            let end = DateUtils.now();
-            dataForUi.strategyTime = end - start;
-
-            require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
-            console.log("Live (strategy) updates executed");
-
-            SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
-
-            StrategyStart(false);
-        }).catch((err)=>{
-            // Send Infos to UI
-            console.log(err.message);
-            StrategyStart(true);
-        })
-    }).catch((err)=>{
+    } catch (e) {
         // Send Infos to UI
-        StrategyStart(true);
-    });
+        StrategyStart(2);
+    }
+
 
 }
 
@@ -307,14 +325,14 @@ const Strategy___OLD = async function () {
             let dataForUi = {};
             if (!tripletData || !tripletData.marketData || !tripletData.triplets || !tripletData.triplets.length) {
                 // Send Infos to UI
-                StrategyStart(true);
+                StrategyStart(2);
                 return;
             }
             let start = DateUtils.now();
             let p = await Profit(tripletData, socketData["bookTicker"], socketData["updatedMdpIds"], INITIAL_AMOUNT);
             if (p == null) {
                 // Send Infos to UI
-                StrategyStart(true);
+                StrategyStart(2);
                 return;
             }
             let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"];
@@ -371,7 +389,7 @@ const Strategy___OLD = async function () {
 
             SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
 
-            StrategyStart(false);
+            StrategyStart(2);
         }
         else if (StrategyUpdateMethod === "second") {
             let tripletData = await Triplet.getTotalCombinations();
@@ -379,19 +397,19 @@ const Strategy___OLD = async function () {
             let dataForUi = {};
             if (!tripletData || !tripletData.marketData || !tripletData.triplets || !tripletData.triplets.length) {
                 // Send Infos to UI
-                StrategyStart(true);
+                StrategyStart(2);
                 return;
             }
             if (!socketData["bookTicker"] || Object.keys(socketData["bookTicker"]).length === 0 || !socketData["updatedMdpIds"] || !socketData["updatedMdpIds"].length) {
                 // Send Infos to UI
-                StrategyStart(true);
+                StrategyStart(2);
                 return;
             }
             let start = DateUtils.now();
             let p = await Profit(tripletData, socketData["bookTicker"], socketData["updatedMdpIds"], INITIAL_AMOUNT);
             if (p == null) {
                 // Send Infos to UI
-                StrategyStart(true);
+                StrategyStart(2);
                 return;
             }
             let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"];
@@ -440,12 +458,12 @@ const Strategy___OLD = async function () {
 
             SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
 
-            StrategyStart(false);
+            StrategyStart(2);
         }
 
     } catch (e) {
         // Send Infos to UI
-        StrategyStart(true);
+        StrategyStart(2);
     }
 
 }
@@ -510,6 +528,7 @@ const saveWinners = function (winners) {
                 let winner = new Trade();
                 winner.trade_id = _winner.trade_id;
                 winner.trade_date = _winner.trade_date;
+                winner.trade_num = _winner.trade_num;
                 winner.exchange = _winner.exchange;
                 winner.triplet = _winner.triplet;
                 winner.time = _winner.time;

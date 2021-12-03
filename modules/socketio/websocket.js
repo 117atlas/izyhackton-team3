@@ -1,11 +1,13 @@
 let jwt = require('jsonwebtoken');
 
+const WebSocketServer = require('websocket').server;
+
 const ErrorCodes = require('../../configs/errorcodes');
 const Response = require('../../configs/response');
 
 const User = require('../../models/user');
 
-let io = null;
+let websocketServer = null;
 let clients = [];
 
 const MESSAGES = {
@@ -101,62 +103,80 @@ const __disconnectClient = (uid, socket) => {
     socket.disconnect(true);
 };
 
-const init = (server) => {
-    let options = {
-        path: "izyhackton/socketio",
-        serveClient: false,
-        transports: ["polling"],
-        //pingInterval: 10000,
-        //pingTimeout: 5000,
-        cookie: false
-    };
-
-    io = require("socket.io")(server, options);
-
-    io.use(async (socket, next) => {
-        /*let authResponse = await __authentication(socket);
-        if (!authResponse.response.auth) {
-            console.log(authResponse);
-            let e = new Error(authResponse.response.error_message);
-            e.data = authResponse.response;
-            next(e);
+const __sendData = (uid) => {
+    setTimeout(()=>{
+        let client = __getClient(uid);
+        if (client != null && client.state === 'open') {
+            client.sendUTF(JSON.stringify({message: 'message'}));
+            __sendData(uid);
         }
-        else {
-            socket.handshake.headers["user"] = authResponse.user;
-            next();
-        }*/
-        next();
+    }, 2000);
+}
+
+const init = (server) => {
+    websocketServer = new WebSocketServer({
+        httpServer: server,
+        autoAcceptConnections: false
     });
 
-    io.on("connection", async (socket) => {
-        //let user = socket.handshake.headers["user"];
-        let user = socket.request.headers;
-        console.log(user);
-        /*console.log("Socket.io client connected : " + socket.id + " --> User " + user);
+    function originIsAllowed(origin) {
+        // put logic here to detect whether the specified origin is allowed.
+        return origin === 'izyhackton-team-3';
+    }
 
-        __addClient(user, socket);
+    function auth(request) {
+        let userId = request.httpRequest.headers["user_id"];
+        let timestamp = request.httpRequest.headers["timestamp"];
+        let _sign = request.httpRequest.headers["sign"];
+        console.log({userId, timestamp, _sign});
+        let token = process.env.TOKEN_SECRET;
+        let s = userId + "$" + timestamp + "$" + token;
+        let sign = require('js-sha1')(s);
+        return sign === _sign;
+    }
 
-        socket.on("disconnect", function () {
-            __removeClient(user);
+    websocketServer.on("request", (request) => {
+        if (!originIsAllowed(request.origin)) {
+            request.reject();
+            console.log('Connection from origin ' + request.origin + ' rejected.');
+            return;
+        }
+        if(!auth(request)) {
+            request.reject();
+            console.log('Connection from origin ' + request.origin + ' rejected. Auth failed');
+            return;
+        }
+
+        let connection = request.accept('echo-protocol', request.origin);
+        let userId = request.httpRequest.headers["user_id"];
+        console.log('Connection accepted.' + (userId == null ? "": userId));
+
+        __addClient(userId, connection);
+
+        connection.on('message', function(message) {
+            /*if (message.type === 'utf8') {
+                console.log('Received Message: ' + message.utf8Data);
+                connection.sendUTF(message.utf8Data);
+            }
+            else if (message.type === 'binary') {
+                console.log('Received Binary Message of ' + message.binaryData.length + ' bytes');
+                connection.sendBytes(message.binaryData);
+            }*/
         });
 
-        socket.on("obs-period", function() {
+        connection.on('close', function(reasonCode, description) {
+            __removeClient(userId);
+        });
 
-        });*/
-
+        __sendData(userId);
     });
 
-    io.on('error', (err) => {
-        console.error(err);
-    });
-
-    console.log(io);
 };
 
 const send = (uid, message, data) => {
     let client = __getClient(uid);
     if (client != null) {
-        client.emit(message, data);
+        client.sendUTF(JSON.stringify(message, data));
     }
 };
 
@@ -165,7 +185,7 @@ const broadcast = (message, data, exclude = null) => {
         exclude = [exclude];
     for (const client of clients) {
         if (exclude == null || !exclude.includes(client.uid))
-            client.socket.emit(message, data);
+            client.sendUTF(JSON.stringify(message, data));
     }
 }
 

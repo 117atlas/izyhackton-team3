@@ -12,7 +12,7 @@ const on = async function (user = null) {
     try {
         let currentState = await State.findOne({current: true}).exec();
         if (currentState != null && currentState["state"] === "ON") {
-            return Constants.done(null, currentState["state"], 0);
+            return Constants.done(null, {state: currentState}, 0);
         }
 
         await State.updateMany({current: true}, {current: false}, {new: true}).exec();
@@ -48,7 +48,7 @@ const off = async function (user = null) {
     try {
         let currentState = await State.findOne({current: true}).exec();
         if (currentState["state"] === "OFF") {
-            return Constants.done(null, currentState["state"], 0);
+            return Constants.done(null, {state: currentState}, 0);
         }
 
         await Strategy.StrategyOff();
