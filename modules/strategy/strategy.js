@@ -13,10 +13,26 @@ const Triplet = require('./triplet');
 const Profit = require('./profit');
 const Statistics = require('./statistics');
 
+const ccxt = require('ccxt');
+const IntraDay = require('../reports/intraday');
+const EndOfDay = require('../reports/endofday');
+const EODReport = require('../../models/eodreport');
+const User = require('../../models/user');
+const MailSender = require('../reports/mailsender');
+
 const Trade = require('../../models/trade');
 const Order = require('../../models/order');
 
 const SocketIO = require('../socketio/websocket');
+
+//Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+const ___escapeRegExp = function (string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+};
+
+const ___replaceAll = function (str, match, replacement){
+    return str.replace(new RegExp(___escapeRegExp(match), 'g'), ()=>replacement);
+};
 
 let tripletCombUpdaterId = null;
 let endOfDayRestartId = null;
@@ -31,6 +47,7 @@ const StrategyData = {
 let Winners = [];
 let WinnersObsPeriod = "daily", WinnersObsPeriodReference = 0;
 let ProfitObsPeriod = "daily", ProfitObsPeriodReference = 0;
+let SendAllWinners = true;
 
 const StrategyUpdateMethod = "second"; //second, real_time
 
@@ -72,6 +89,7 @@ const StrategyOn = async function (stateId) {
     }
     let autoProcessVars = await Variables.getAutoProcessesVariables();
     console.log(autoProcessVars);
+    SendAllWinners = true;
     WinnersObsPeriodReference = Date.now();
     Winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(Date.now(), WinnersObsPeriod)}})
         .populate({path: 'orders'})
@@ -131,6 +149,7 @@ const StrategyOff = async function (closeSocketConnection = true) {
         clearInterval(SecondUpdatesIntervalId);
         SecondUpdatesIntervalId = null;
     }
+    SendAllWinners = true;
     WinnersObsPeriodReference = 0;
     Winners = [];
     if (closeSocketConnection) {
@@ -139,7 +158,148 @@ const StrategyOff = async function (closeSocketConnection = true) {
 }
 
 const StrategyAutoRestart = async function () {
+    console.log("App Auto restart");
 
+    let currentState = AppState.APP_STATE;
+    if (currentState == null) {
+        currentState = await State.findOne({current: true}).exec();
+    }
+    if (currentState["state"] !== AppState.APP_STATE_VALUES.OFF) {
+        currentState["state"] = AppState.APP_STATE_VALUES.OFF;
+        currentState["off_date"] = DateUtils.now();
+        await currentState.save();
+        AppState.APP_STATE = currentState;
+    }
+
+    await StrategyOff();
+    console.log("Strategy off");
+
+    let autoProcessVars = await Variables.getAutoProcessesVariables();
+    let autoResetPeriod = autoProcessVars["autoResetPeriod"];
+    //["5mn", "10mn", "15mn", "30mn", "1h", "6h", "12h", "1d", "1m", "3m", "6m", "1y"],
+    let tradesPeriod = "daily";
+    let fileName = "end_of_day_"+Date.now();
+    if (["5mn", "10mn", "15mn", "30mn", "1h"].includes(autoResetPeriod)) {
+        tradesPeriod = "hourly";
+    }
+    else if (["6h", "12h"].includes(autoResetPeriod)) {
+        tradesPeriod = "daily";
+    }
+    else if (["1d"].includes(autoResetPeriod)) {
+        tradesPeriod = "daily";
+    }
+    else if (["1m"].includes(autoResetPeriod)) {
+        tradesPeriod = "monthly";
+    }
+    else if (["3m", "6m", "1y"].includes(autoResetPeriod)) {
+        tradesPeriod = "yearly";
+    }
+    let start = DateUtils.StartOfPeriodTime(Date.now(), tradesPeriod);
+    if (tradesPeriod === "hourly") {
+        fileName = "end_of_hour_" + DateUtils.PrintDateTime(start, false) + ".xlsx";
+    }
+    else if (tradesPeriod === "daily") {
+        fileName = "end_of_day_" + DateUtils.PrintDate(start, false) + ".xlsx";
+    }
+    else if (tradesPeriod === "monthly") {
+        let end = new Date(start);
+        end.setUTCMonth(end.getUTCMonth()+1);
+        fileName = "end_of_month_" + DateUtils.PrintDateTime(start, false) + "_" + DateUtils.PrintDateTime(end, false) + ".xlsx";
+    }
+    else if (tradesPeriod === "daily") {
+        let end = new Date(start);
+        end.setUTCFullYear(end.getUTCFullYear()+1);
+        fileName = "end_of_year_" + DateUtils.PrintDateTime(start, false) + "_" + DateUtils.PrintDateTime(end, false) + ".xlsx";
+    }
+    let winners = await Trade.find({trade_date: {$gte: start}})
+        .populate({path: 'orders'})
+        .sort('trade_date trade_num')
+        .exec();
+    let pairs = winners
+        .map(w => w["orders"].map(o => o["pair"]))
+        .flat()
+        .filter((p, i, arr) => arr.indexOf(p) === i);
+    console.log("EOD - Winners fetched");
+
+    let tickerData = await new ccxt.binance().fetchTickers(pairs);
+    let workbook = await EndOfDay(winners, tickerData);
+    fileName = ___replaceAll(fileName, "/", "_");
+    fileName = ___replaceAll(fileName, ":", "_");
+    let filePath = "../reports/" + fileName;
+    console.log("EOD - Excel file generated");
+
+    let eodReport = new EODReport();
+    eodReport.report_id = shortId.generate();
+    eodReport.period_timestamp = start;
+    eodReport.period = DateUtils.PrintDateTime(start, false);
+    eodReport.url = "https://104.154.91.24/izyhackton/trades/end-of-day/" +
+        ___replaceAll(___replaceAll(fileName, ":", "_"), ":", "_") +
+        "/" + eodReport.report_id;
+    eodReport.filepath = filePath;
+    eodReport.filename = fileName;
+    await eodReport.save();
+
+    await workbook.xlsx.writeFile(filePath);
+    console.log("EOD - Report created and saved and excel file written");
+
+    let users = await User.find({email: {$ne: null}}).select('_id user_id email').exec();
+    let usersEmails = users.map(u => u["email"]);
+    let eodEmails = autoProcessVars["eodEmails"];
+    let emails = [].concat(usersEmails).concat(eodEmails);
+    emails = emails.filter((e, i, arr) => arr.indexOf(e) === i);
+    emails = emails.filter(e => e!==process.env.DEV_EMAIL);
+    MailSender(emails, eodReport, true);
+    console.log("EOD - Report created and saved and excel file written");
+
+    let nxtDayStart = DateUtils.StartOfPeriodTime(Date.now() + 60*60*1000);
+    let delay = Date.now() - nxtDayStart;
+    delay = Math.max(5000, delay);
+
+    setTimeout(async ()=>{
+        console.log("App restart launched");
+
+        await State.updateMany({current: true}, {current: false}, {new: true}).exec();
+        let nState = new State();
+        nState.state_id = shortId.generate();
+        nState.current = false;
+        nState.state = AppState.APP_STATE_VALUES.CONNECTING;
+        nState.on_date = DateUtils.now();
+        nState.off_date = 0;
+        await nState.save();
+
+        let o = await Strategy.StrategyOn(nState.state_id);
+        if (o != null && typeof o === "string") {
+            await State.deleteOne({state_id: nState.state_id}).exec();
+            return;
+        }
+
+        if (AppState.APP_STATE == null || AppState.APP_STATE["state"] !== AppState.APP_STATE_VALUES.ON)
+            AppState.APP_STATE = nState;
+
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState, null);
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_RESTARTED, true, null);
+
+    }, delay)
+    console.log("App restart scheduled after " + delay + " ms");
+
+}
+
+const IntraDayFile = async function () {
+    let filename = "IntraDay_"+Date.now()+".xlsx";
+    let workbook = await IntraDay(Winners || []);
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {buffer, filename};
+}
+
+const EndOfDayFile = async function (reportId) {
+    let report = await EODReport.findOne({report_id: reportId}).exec();
+    let filePath = report["filepath"];
+    if (require('fs').existsSync(filePath)) {
+        let buffer = require('fs').readFileSync(filePath);
+        let filename = report["filename"];
+        return {buffer, filename};
+    }
+    return null;
 }
 
 const changeInitialAmount = async function (params) {
@@ -163,6 +323,7 @@ const ChangeWinnersObsPeriod = async function (period) {
             WinnersObsPeriod = period;
             WinnersObsPeriodReference = newRef;
             Winners = _winners;
+            SendAllWinners = true;
         }
     } catch (e) {
         console.log("ChangeWinnersObsPeriod error - " + e.message);
@@ -276,7 +437,15 @@ const Strategy = async function () {
                 } else {
                     Winners = [].concat(winners);
                 }
-                dataForUi.winners = Winners;
+                if (SendAllWinners) {
+                    dataForUi.winners = Winners;
+                    dataForUi.allWinners = true;
+                    SendAllWinners = false;
+                } else {
+                    dataForUi.winners = winners;
+                    dataForUi.allWinners = false;
+                }
+
 
                 console.log(trades.length + " trades found and " + winners.length + " winners detected");
 
@@ -551,5 +720,5 @@ const saveWinners = function (winners) {
 }
 
 module.exports = {
-    StrategyOn, StrategyOff, StrategyStart, changeInitialAmount, Strategy, ChangeWinnersObsPeriod
+    StrategyOn, StrategyOff, StrategyStart, changeInitialAmount, Strategy, ChangeWinnersObsPeriod, StrategyAutoRestart, IntraDayFile, EndOfDayFile
 }

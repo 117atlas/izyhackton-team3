@@ -21,6 +21,11 @@ router.get('/restart', async function(req, res, next) {
     res.send(response);
 });
 
+router.get('/auto-restart', async function (req, res, next) {
+    res.send('message');
+    Launcher.autoRestart();
+});
+
 router.get('/state', async function(req, res, next) {
     let response = await Router(Launcher.state, {});
     res.send(response);

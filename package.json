@@ -6,6 +6,7 @@
     "start": "babel-node ./bin/www"
   },
   "dependencies": {
+    "@sendgrid/mail": "^7.6.0",
     "@wojtekmaj/date-utils": "^1.0.3",
     "babel-cli": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",

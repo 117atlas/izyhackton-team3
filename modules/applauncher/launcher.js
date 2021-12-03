@@ -29,6 +29,7 @@ const on = async function (user = null) {
 
         let o = await Strategy.StrategyOn(nState.state_id);
         if (o != null && typeof o === "string") {
+            await State.deleteOne({state_id: nState.state_id}).exec();
             return Constants.done(null, null, -1, o);
         }
 
@@ -88,8 +89,9 @@ const restart = async function (user = null) {
         nState.off_date = 0;
         await nState.save();
 
-        let o = await Strategy.StrategyOn();
+        let o = await Strategy.StrategyOn(nState.state_id);
         if (o != null && typeof o === "string") {
+            await State.deleteOne({state_id: nState.state_id}).exec();
             return Constants.done(null, null, -1, o);
         }
 
@@ -106,6 +108,10 @@ const restart = async function (user = null) {
     }
 }
 
+const autoRestart =  function () {
+    Strategy.StrategyAutoRestart().then();
+}
+
 const state = async function () {
     let currentState = AppState.APP_STATE;
     if (currentState == null) {
@@ -115,11 +121,29 @@ const state = async function () {
     return Constants.done(null, {state: currentState == null ? null : currentState}, 0);
 }
 
+const intraDay = async function () {
+    try {
+        let itd = await Strategy.IntraDayFile();
+        return Constants.done(null, itd, 0);
+    } catch (e) {
+        return Constants.done(e, null, -1);
+    }
+}
+
+const EndOfDay = async function (reportId) {
+    try {
+        let eod = await Strategy.EndOfDayFile(reportId);
+        return Constants.done(null, eod, 0);
+    } catch (e) {
+        return Constants.done(e, null, -1);
+    }
+}
+
 const changeObsPeriod = async function (params) {
     if (params["period"] != null)
         await Strategy.ChangeWinnersObsPeriod(params["period"]);
 }
 
 module.exports = {
-    on, off, restart, state, changeObsPeriod
+    on, off, restart, state, changeObsPeriod, autoRestart,intraDay, EndOfDay
 }

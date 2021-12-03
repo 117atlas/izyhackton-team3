@@ -13,7 +13,7 @@ const profitStatistics = async (period, Winners = null) => {
     let start = 0, end = 0, step = 0;
     let times = [];
     if (period === "hourly") {
-        let now = Date.now();
+        let now = Date.now() - 3*60*60*1000;
         end = DateUtils.endOfDayTime("1h", now, false);
         start = DateUtils.StartOfPeriodTime(now, "daily");
         step = 60*60*1000;
@@ -96,12 +96,12 @@ const profitStatistics = async (period, Winners = null) => {
             let profit = w.map((x)=>x["profit"]).reduce((a, b)=>a+b,0);
             let usdProfit = w.map((x)=>x["usdProfit"]).reduce((a, b)=>a+b,0);
             let bnbFees = w.map((x)=>x["bnbFees"]).reduce((a, b)=>a+b,0);
-            let dateStr = period === "hourly" ? DateUtils.PrintDateTime(times[i], true) : DateUtils.PrintDate(times[i], true);
+            let dateStr = period === "hourly" ? DateUtils.PrintDateTime(times[i], false) : DateUtils.PrintDate(times[i], false);
             profitStats.push({date: dateStr, final, initial, profit, usdProfit, bnbFees, nb_winners: winners.length,
                 start: times[i], end: times[i+1]});
         }
         else {
-            let dateStr = period === "hourly" ? DateUtils.PrintDateTime(times[i], true) : DateUtils.PrintDate(times[i], true);
+            let dateStr = period === "hourly" ? DateUtils.PrintDateTime(times[i], false) : DateUtils.PrintDate(times[i], false);
             profitStats.push({date: dateStr, final: 0, initial: 0, profit: 0, usdProfit: 0, bnbFees: 0, nb_winners: 0,
                 start: times[i], end: times[i+1]});
         }

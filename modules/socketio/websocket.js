@@ -125,7 +125,7 @@ const init = (server) => {
     }
 
     function auth(request) {
-        let userId = request.httpRequest.headers["user_id"];
+        let userId = request.httpRequest.headers["userid"];
         let timestamp = request.httpRequest.headers["timestamp"];
         let _sign = request.httpRequest.headers["sign"];
         console.log({userId, timestamp, _sign});
@@ -148,7 +148,7 @@ const init = (server) => {
         }
 
         let connection = request.accept('echo-protocol', request.origin);
-        let userId = request.httpRequest.headers["user_id"];
+        let userId = request.httpRequest.headers["userid"];
         console.log('Connection accepted.' + (userId == null ? "": userId));
 
         __addClient(userId, connection);
