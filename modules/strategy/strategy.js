@@ -472,6 +472,20 @@ const Strategy = async function () {
             }
         });
 
+        child.on('close', (code, signal) => {
+            console.log("Child is closed - ", JSON.stringify({code, signal}));
+        });
+        child.on('exit', (code, signal) => {
+            console.log("Child is exited - ", JSON.stringify({code, signal}));
+        });
+        child.on('error', (err) => {
+            console.log("Child is errored - ", err.message);
+            console.error(err);
+        });
+        child.on('disconnect', () => {
+            console.log("Child is disconnected - ", err.message);
+        });
+
         child.send({
             message: 'start',
             params: {strategyVars, tripletsData: tripletData, bookTicker: socketData["bookTicker"],
