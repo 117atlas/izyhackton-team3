@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "babel-node ./bin/www"
+    "start": "nodemon --exec babel-node ./bin/www"
   },
   "dependencies": {
     "@sendgrid/mail": "^7.6.0",

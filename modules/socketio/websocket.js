@@ -121,14 +121,15 @@ const init = (server) => {
 
     function originIsAllowed(origin) {
         // put logic here to detect whether the specified origin is allowed.
-        return origin === 'izyhackton-team-3';
+        //return origin === 'izyhackton-team-3';
+        return true;
     }
 
     function auth(request) {
         let userId = request.httpRequest.headers["userid"];
         let timestamp = request.httpRequest.headers["timestamp"];
         let _sign = request.httpRequest.headers["sign"];
-        console.log({userId, timestamp, _sign});
+        //console.log({userId, timestamp, _sign});
         let token = process.env.TOKEN_SECRET;
         let s = userId + "$" + timestamp + "$" + token;
         let sign = require('js-sha1')(s);
@@ -136,7 +137,7 @@ const init = (server) => {
     }
 
     websocketServer.on("request", (request) => {
-        if (!originIsAllowed(request.origin)) {
+        /*if (!originIsAllowed(request.origin)) {
             request.reject();
             console.log('Connection from origin ' + request.origin + ' rejected.');
             return;
@@ -145,7 +146,7 @@ const init = (server) => {
             request.reject();
             console.log('Connection from origin ' + request.origin + ' rejected. Auth failed');
             return;
-        }
+        }*/
 
         let connection = request.accept('echo-protocol', request.origin);
         let userId = request.httpRequest.headers["userid"];
