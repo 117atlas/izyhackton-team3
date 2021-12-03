@@ -4,6 +4,7 @@ const mongoose = require('mongoose'),
 const TradeSchema = new Schema({
     trade_id: {type: String},
     trade_date: {type: Number},
+    trade_num: {type: Number},
     exchange: {type: String},
     triplet: {type: String},
     time: {type: Number},

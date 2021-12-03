@@ -62,7 +62,7 @@ const endOfDayScheduler = function (autoProcessVars) {
     console.log("End of day process scheduled to happen in " + DateUtils.RemainingTime(endOfDayTimeOut - thisTime));
 }
 
-const StrategyOn = async function () {
+const StrategyOn = async function (stateId) {
     await Variables.updateStrategyVariables();
     let val = await Variables.validateStrategyVars();
     console.log(val);
@@ -74,6 +74,7 @@ const StrategyOn = async function () {
     WinnersObsPeriodReference = Date.now();
     Winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(Date.now(), WinnersObsPeriod)}})
         .populate({path: 'orders'})
+        .sort('trade_date trade_num')
         .exec();
     console.log(Winners);
     INITIAL_AMOUNT = (await Variables.getVariable({name: "initialAmount"}))["data"]["initialAmount"];
@@ -82,26 +83,38 @@ const StrategyOn = async function () {
     console.log("Triplets generated");
     await Socket.openConnection(async (err, state) => {
         if (err) {
-            await State.deleteOne({current: true}).exec();
-            AppState.APP_STATE = null;
+            await State.deleteOne({state_id: stateId}).exec();
+
+            AppState.APP_STATE = await State.findOne({current: true}).exec();
 
             SocketIO.broadcast(SocketIO.MESSAGES.BINANCE_CONNECTION_ERROR, err.message);
-            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE_VALUES.OFF);
+            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE);
         }
         else {
-            AppState.APP_STATE = await State.findOneAndUpdate({current: true}, {state: state}, {new: true}).exec();
+            AppState.APP_STATE = await State.findOneAndUpdate({state_id: stateId}, {current: true, state: state},
+                {new: true}).exec();
             tripletCombinationUpdater(autoProcessVars);
             endOfDayScheduler(autoProcessVars);
 
             SocketIO.broadcast(SocketIO.MESSAGES.BINANCE_CONNECTION_SUCCESS, true);
-            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE["state"]);
+            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE);
 
             StrategyStart(true);
+        }
+    }, async (err) => {
+        if (err) {
+            AppState.APP_STATE = await State.findOneAndUpdate({state_id: stateId}, {state: AppState.APP_STATE_VALUES.OFF},
+                {new: true}).exec();
+
+            await StrategyOff(false);
+
+            SocketIO.broadcast(SocketIO.MESSAGES.BINANCE_CONNECTION_ERROR, err.message);
+            SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, AppState.APP_STATE);
         }
     });
 }
 
-const StrategyOff = async function () {
+const StrategyOff = async function (closeSocketConnection = true) {
     if (tripletCombUpdaterId != null) {
         console.log("Triplet combinaisons update scheduler interruption");
         clearInterval(tripletCombUpdaterId);
@@ -119,7 +132,9 @@ const StrategyOff = async function () {
     }
     WinnersObsPeriodReference = 0;
     Winners = [];
-    await Socket.closeConnection();
+    if (closeSocketConnection) {
+        Socket.closeConnection();
+    }
 }
 
 const StrategyAutoRestart = async function () {
@@ -165,7 +180,7 @@ const StrategyStart = function (delay = false) {
         }
         else {
             StrategyTimeOutId = null;
-            Strategy();
+            setTimeout(()=>{Strategy()}, 0);
         }
         if (StrategyUpdateMethod === "second") {
             if (SecondUpdatesIntervalId == null) {
@@ -190,7 +205,14 @@ const StrategyStart = function (delay = false) {
         }
         //StrategyTimeOutId = null;
         //SecondUpdatesIntervalId = null;
+        console.log(AppState.APP_STATE != null);
+        if (AppState.APP_STATE != null)
+            console.log(AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON)
     }
+}
+
+const SSS = function () {
+    StrategyStart(true);
 }
 
 const Strategy = function () {
@@ -204,20 +226,20 @@ const Strategy = function () {
         }
         if (!socketData["bookTicker"] || Object.keys(socketData["bookTicker"]).length === 0 || !socketData["updatedMdpIds"] || !socketData["updatedMdpIds"].length) {
             // Send Infos to UI
-            console.log(socketData["bookTicker"] == null);
-            if (socketData["bookTicker"] != null) console.log(Object.keys(socketData["bookTicker"]).length);
-            console.log(socketData["updatedMdpIds"] == null);
-            if (socketData["updatedMdpIds"] != null) console.log(!socketData["updatedMdpIds"].length);
             StrategyStart(true);
             return;
         }
         let start = Date.now();
         Profit(tripletData, socketData["bookTicker"], socketData["updatedMdpIds"], INITIAL_AMOUNT).then(p => {
+            console.log("profit calculation - ", (Date.now() - start), " ms");
             if (p == null) {
                 // Send Infos to UI
                 StrategyStart(true);
                 return;
             }
+            console.log("profit calculation - ", (Date.now() - start), " ms, ", p["trades"].length,
+                " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
+                " updated binance pairs.");
             let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"];
             INITIAL_AMOUNT = p["initialUsdAmount"];
             Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT}).then();

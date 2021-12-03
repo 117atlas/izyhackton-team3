@@ -98,3 +98,6 @@ function onListening() {
     : 'port ' + addr.port;
   debug('Listening on ' + bind);
 }
+
+let WS = require('../modules/socketio/socketio');
+WS.init(server);

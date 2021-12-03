@@ -113,7 +113,7 @@ const init = (server) => {
     io = require("socket.io")(server, options);
 
     io.use(async (socket, next) => {
-        let authResponse = await __authentication(socket);
+        /*let authResponse = await __authentication(socket);
         if (!authResponse.response.auth) {
             console.log(authResponse);
             let e = new Error(authResponse.response.error_message);
@@ -123,7 +123,8 @@ const init = (server) => {
         else {
             socket.handshake.headers["user"] = authResponse.user;
             next();
-        }
+        }*/
+        next();
     });
 
     io.on("connection", async (socket) => {

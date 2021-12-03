@@ -18,16 +18,16 @@ const on = async function (user = null) {
         await State.updateMany({current: true}, {current: false}, {new: true}).exec();
         let nState = new State();
         nState.state_id = shortId.generate();
-        nState.current = true;
+        nState.current = false;
         nState.state = AppState.APP_STATE_VALUES.CONNECTING;
         nState.on_date = DateUtils.now();
         nState.off_date = 0;
         await nState.save();
 
         const SocketIO = require('../socketio/socketio');
-        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState, user);
 
-        let o = await Strategy.StrategyOn();
+        let o = await Strategy.StrategyOn(nState.state_id);
         if (o != null && typeof o === "string") {
             return Constants.done(null, null, -1, o);
         }
@@ -57,7 +57,7 @@ const off = async function (user = null) {
         AppState.APP_STATE = nState;
 
         const SocketIO = require('../socketio/socketio');
-        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState, user);
 
         return Constants.done(null, {state: nState}, 0);
     } catch (e) {
@@ -82,7 +82,7 @@ const restart = async function (user = null) {
         await State.updateMany({current: true}, {current: false}, {new: true}).exec();
         let nState = new State();
         nState.state_id = shortId.generate();
-        nState.current = true;
+        nState.current = false;
         nState.state = AppState.APP_STATE_VALUES.CONNECTING;
         nState.on_date = DateUtils.now();
         nState.off_date = 0;
@@ -97,7 +97,7 @@ const restart = async function (user = null) {
             AppState.APP_STATE = nState;
 
         const SocketIO = require('../socketio/socketio');
-        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState.state, user);
+        SocketIO.broadcast(SocketIO.MESSAGES.APP_STATE, nState, user);
         SocketIO.broadcast(SocketIO.MESSAGES.APP_RESTARTED, true, user);
 
         return Constants.done(null, {state: nState}, 0);

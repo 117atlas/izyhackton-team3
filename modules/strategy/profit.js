@@ -282,246 +282,267 @@ const convertToBNB = async function (amount, coin, bookTicker, tripletsData) {
     return null;
 }
 
-const calculateProfit = async function (tripletsData, bookTicker, updatedMdpIds, varInitAmt) {
-    let trades = [];
-    let triplets = tripletsData["triplets"];
-    let s = Date.now();
-    let strategyVars = await Variables.getStrategyVariables();
-    let valStVars = Variables.validateStrategyVars(strategyVars);
-    if (valStVars["error"]) {
-        throw new Error(valStVars["errorMessage"]);
-    }
-    let defaultFees = strategyVars["defaultTradeFee"];
-    let useDefaultFees = strategyVars["useDefaultTradeFee"];
+const calculateProfit = function (tripletsData, bookTicker, updatedMdpIds, varInitAmt) {
+    return new Promise(async (resolve, reject) => {
+        let trades = [];
+        let triplets = tripletsData["triplets"];
+        let s = Date.now();
+        let strategyVars = await Variables.getStrategyVariables();
+        let valStVars = Variables.validateStrategyVars(strategyVars);
+        if (valStVars["error"]) {
+            //throw new Error(valStVars["errorMessage"]);
+            reject(new Error(valStVars["errorMessage"]));
+        }
+        let defaultFees = strategyVars["defaultTradeFee"];
+        let useDefaultFees = strategyVars["useDefaultTradeFee"];
 
-    if (updatedMdpIds.length === 0) {
-        return null;
-    }
-    let filteredTriplets = updatedMdpIds
-        .map(x => tripletsData["marketData"]["mdpIdsToMdPairs"][x])
-        .filter(mdp => tripletsData["mdpToTriplets"][mdp] != null)
-        .map(mdp => tripletsData["mdpToTriplets"][mdp])
-        .flat()
-        .filter((value, index, arr)=> arr.indexOf(value) === index)
-        .map(tripletId => {return {triplet: triplets[tripletId], index: tripletId}});
+        if (updatedMdpIds.length === 0) {
+            resolve(null);
+            //return null;
+        }
+        let filteredTriplets = updatedMdpIds
+            .map(x => tripletsData["marketData"]["mdpIdsToMdPairs"][x])
+            .filter(mdp => tripletsData["mdpToTriplets"][mdp] != null)
+            .map(mdp => tripletsData["mdpToTriplets"][mdp])
+            .flat()
+            .filter((value, index, arr)=> arr.indexOf(value) === index)
+            .filter(tripletId => {
+                let a = tripletsData["tripletsToMdp"][tripletId]
+                    .map(mdp => tripletsData["marketData"]["mdPairsToMdpIds"][mdp])
+                    .filter(mdpId => bookTicker[mdpId] != null);
+                return a.length === 3;
+            })
+            .map(tripletId => {return {triplet: triplets[tripletId], index: tripletId}});
 
-    if (filteredTriplets.length === 0) {
-        return null;
-    }
+        if (filteredTriplets.length === 0) {
+            resolve(null);
+            //return null;
+        }
 
-    //mdpIdsToMdPairs
-    /*let filteredTriplets = triplets
-        .map((triplet, index) => {
-            let tripletRelatedMdpIds = Object.keys(tripletsData["mdpToTriplets"])
-                .filter((mdp) => {
-                    return tripletsData["mdpToTriplets"][mdp].includes(index);
-                })
-                .map((mdp) => {
-                    return tripletsData["marketData"]["mdPairsToMdpIds"][mdp];
-                })
-                .filter((mdpId) => {
-                    return updatedMdpIds.includes(mdpId);
-                });
-            if (tripletRelatedMdpIds.length > 0) {
-                return {triplet, index};
-            } else {
-                return null;
+        //return null;
+
+        //mdpIdsToMdPairs
+        /*let filteredTriplets = triplets
+            .map((triplet, index) => {
+                let tripletRelatedMdpIds = Object.keys(tripletsData["mdpToTriplets"])
+                    .filter((mdp) => {
+                        return tripletsData["mdpToTriplets"][mdp].includes(index);
+                    })
+                    .map((mdp) => {
+                        return tripletsData["marketData"]["mdPairsToMdpIds"][mdp];
+                    })
+                    .filter((mdpId) => {
+                        return updatedMdpIds.includes(mdpId);
+                    });
+                if (tripletRelatedMdpIds.length > 0) {
+                    return {triplet, index};
+                } else {
+                    return null;
+                }
+            })
+            .filter(t => t != null);*/
+
+
+        let nBTripletsToCheck = filteredTriplets.length;
+
+        let initialUsdAmount = varInitAmt;
+
+        for (let i=0; i<filteredTriplets.length; i++) {
+            let start = Date.now();
+
+            let triplet = filteredTriplets[i]["triplet"];
+            let tripletId = filteredTriplets[i]["index"];
+            //let crypto = triplet[0];
+            let crypto = null;
+            try {
+                crypto = triplet[0];
+            } catch (e) {
+                console.log(filteredTriplets[i]);
+                reject(e);
+                //throw e;
             }
-        })
-        .filter(t => t != null);*/
 
+            let initialAmount = convertInitialAmount(strategyVars, initialUsdAmount, crypto, bookTicker, tripletsData);
+            if (initialAmount == null){
+                continue;
+            }
+            let amount = initialAmount;
+            const orders = [];
 
-    let nBTripletsToCheck = filteredTriplets.length;
+            let fail = false;
+            let reversedPrices = [], tripletBaseAmountPrecision = null;
+            for (let j=0; j<3; j++) {
+                const pair = `${triplet[j]}/${triplet[j+1]}`;
+                const mdp = tripletsData["marketData"]["mdCurPairsToMdPairs"][pair];
+                const mdpId = tripletsData["marketData"]["mdPairsToMdpIds"][mdp];
+                let position = pair === mdp ? 1 : 2;
+                if (position === 1) {
+                    let bidPrice = null;
+                    if (bookTicker[mdpId]) {
+                        bidPrice = new Decimal(bookTicker[mdpId]["bidPrice"])
+                            .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
+                    }
+                    /*else if (tripletsData["marketData"]["mdPairsData"][mdp].default_values != null) {
+                        bidPrice = new Decimal(tripletsData["marketData"]["mdPairsData"][mdp]["default_values"].bid_price)
+                            .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
+                    }*/
+                    if (bidPrice == null){
+                        fail = true;
+                        break;
+                    }
+                    amount = amount.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
 
-    let initialUsdAmount = varInitAmt;
+                    let feesPercentage = defaultFees;
+                    if (!useDefaultFees) {
+                        feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
+                    }
+                    let feesPairBase = amount.mul(new Decimal(feesPercentage));
+                    let feesTripletBase = new Decimal(0);
+                    if (j === 0) {
+                        tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.base;
+                        feesTripletBase = feesPairBase;
+                        reversedPrices.push(new Decimal(1).div(bidPrice));
+                    }
+                    else {
+                        let tripletBasePrice = reversedPrices.reduce((a, b)=> a.mul(b), new Decimal(1));
+                        feesTripletBase = feesPairBase.mul(tripletBasePrice);
+                        if (j === 1) reversedPrices.push(new Decimal(1).div(bidPrice));
+                    }
+                    feesPairBase = feesPairBase.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.base, Decimal.ROUND_DOWN);
+                    feesTripletBase = feesTripletBase.toDecimalPlaces(tripletBaseAmountPrecision, Decimal.ROUND_DOWN);
 
-    for (let i=0; i<filteredTriplets.length; i++) {
-        let start = Date.now();
-
-        let triplet = filteredTriplets[i]["triplet"];
-        let tripletId = filteredTriplets[i]["index"];
-        //let crypto = triplet[0];
-        let crypto = null;
-        try {
-            crypto = triplet[0];
-        } catch (e) {
-            console.log(filteredTriplets[i]);
-            throw e;
-        }
-
-        let initialAmount = convertInitialAmount(strategyVars, initialUsdAmount, crypto, bookTicker, tripletsData);
-        if (initialAmount == null){
-            continue;
-        }
-        let amount = initialAmount;
-        const orders = [];
-
-        let fail = false;
-        let reversedPrices = [], tripletBaseAmountPrecision = null;
-        for (let j=0; j<3; j++) {
-            const pair = `${triplet[j]}/${triplet[j+1]}`;
-            const mdp = tripletsData["marketData"]["mdCurPairsToMdPairs"][pair];
-            const mdpId = tripletsData["marketData"]["mdPairsToMdpIds"][mdp];
-            let position = pair === mdp ? 1 : 2;
-            if (position === 1) {
-                let bidPrice = null;
-                if (bookTicker[mdpId]) {
-                    bidPrice = new Decimal(bookTicker[mdpId]["bidPrice"])
-                        .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
-                }
-                /*else if (tripletsData["marketData"]["mdPairsData"][mdp].default_values != null) {
-                    bidPrice = new Decimal(tripletsData["marketData"]["mdPairsData"][mdp]["default_values"].bid_price)
-                        .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
-                }*/
-                if (bidPrice == null){
-                    fail = true;
-                    break;
-                }
-                amount = amount.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
-
-                let feesPercentage = defaultFees;
-                if (!useDefaultFees) {
-                    feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
-                }
-                let feesPairBase = amount.mul(new Decimal(feesPercentage));
-                let feesTripletBase = new Decimal(0);
-                if (j === 0) {
-                    tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.base;
-                    feesTripletBase = feesPairBase;
-                    reversedPrices.push(new Decimal(1).div(bidPrice));
+                    orders.push({
+                        order_id: shortId.generate(),
+                        pair: mdp,
+                        side: 'sell',
+                        amount: amount.toNumber(),
+                        price: bidPrice.toNumber(),
+                        fees_percentage: feesPercentage,
+                        fees_pair_base: feesPairBase.toNumber(),
+                        fees_triplet_base: feesTripletBase.toNumber(),
+                        link: `https://www.binance.com/en/trade/${mdp.replace('/', '_')}?ref=OJN3QQMJ`,
+                        total: amount.mul(bidPrice).toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN).toNumber(),
+                        order_date: DateUtils.now()
+                    });
+                    amount = amount.mul(bidPrice);
                 }
                 else {
-                    let tripletBasePrice = reversedPrices.reduce((a, b)=> a.mul(b), new Decimal(1));
-                    feesTripletBase = feesPairBase.mul(tripletBasePrice);
-                    if (j === 1) reversedPrices.push(new Decimal(1).div(bidPrice));
-                }
-                feesPairBase = feesPairBase.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.base, Decimal.ROUND_DOWN);
-                feesTripletBase = feesTripletBase.toDecimalPlaces(tripletBaseAmountPrecision, Decimal.ROUND_DOWN);
+                    let askPrice = null;
+                    if (bookTicker[mdpId]) {
+                        askPrice = new Decimal(bookTicker[mdpId]["askPrice"])
+                            .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
+                    }
+                    /*else if (tripletsData["marketData"]["mdPairsData"][mdp].default_values != null) {
+                        askPrice = new Decimal(tripletsData["marketData"]["mdPairsData"][mdp]["default_values"].ask_price)
+                            .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
+                    }*/
+                    if (askPrice == null){
+                        fail = true;
+                        break;
+                    }
+                    const previousAmount = amount;
+                    amount = amount.div(askPrice).toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
 
-                orders.push({
-                    order_id: shortId.generate(),
-                    pair: mdp,
-                    side: 'sell',
-                    amount: amount.toNumber(),
-                    price: bidPrice.toNumber(),
-                    fees_percentage: feesPercentage,
-                    fees_pair_base: feesPairBase.toNumber(),
-                    fees_triplet_base: feesTripletBase.toNumber(),
-                    link: `https://www.binance.com/en/trade/${mdp.replace('/', '_')}?ref=OJN3QQMJ`,
-                    total: amount.mul(bidPrice).toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN).toNumber(),
-                    order_date: DateUtils.now()
-                });
-                amount = amount.mul(bidPrice);
+                    let feesPercentage = defaultFees;
+                    if (!useDefaultFees) {
+                        feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
+                    }
+                    let feesPairBase = previousAmount.mul(new Decimal(feesPercentage));
+                    let feesTripletBase = new Decimal(0);
+                    if (j === 0) {
+                        tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.quote;
+                        feesTripletBase = feesPairBase;
+                        reversedPrices.push(askPrice);
+                    }
+                    else {
+                        let tripletBasePrice = reversedPrices.reduce((a, b)=> a.mul(b), new Decimal(1));
+                        feesTripletBase = feesPairBase.mul(tripletBasePrice);
+                        if (j === 1) reversedPrices.push(askPrice);
+                    }
+                    feesPairBase = feesPairBase.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN);
+                    feesTripletBase = feesTripletBase.toDecimalPlaces(tripletBaseAmountPrecision, Decimal.ROUND_DOWN);
+
+                    orders.push({
+                        order_id: shortId.generate(),
+                        pair: mdp,
+                        side: 'buy',
+                        amount: amount.toNumber(),
+                        price: askPrice.toNumber(),
+                        fees_percentage: feesPercentage,
+                        fees_pair_base: feesPairBase.toNumber(),
+                        fees_triplet_base: feesTripletBase.toNumber(),
+                        link: `https://www.binance.com/en/trade/${mdp.replace('/', '_')}`,
+                        total: previousAmount.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN).toNumber(),
+                        order_date: DateUtils.now()
+                    });
+                }
             }
-            else {
-                let askPrice = null;
-                if (bookTicker[mdpId]) {
-                    askPrice = new Decimal(bookTicker[mdpId]["askPrice"])
-                        .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
-                }
-                /*else if (tripletsData["marketData"]["mdPairsData"][mdp].default_values != null) {
-                    askPrice = new Decimal(tripletsData["marketData"]["mdPairsData"][mdp]["default_values"].ask_price)
-                        .toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.price, Decimal.ROUND_DOWN);
-                }*/
-                if (askPrice == null){
-                    fail = true;
-                    break;
-                }
-                const previousAmount = amount;
-                amount = amount.div(askPrice).toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
 
-                let feesPercentage = defaultFees;
-                if (!useDefaultFees) {
-                    feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
+            if(!fail){
+                //const fee = new Decimal(defaultFees).mul(3);
+                //const profit = amount.div(initialAmount).sub(fee);
+                const fees = orders
+                    .map((o)=> new Decimal(o["fees_triplet_base"]))
+                    .reduce((a, b)=> a.add(b), new Decimal(0));
+                const bnbFees = convertAmount(fees, triplet[0], "BNB", bookTicker, tripletsData);
+                const profit = (amount.sub(fees)).div(initialAmount);
+                const finalUsdAmount = convertFinalAmount(strategyVars, amount, triplet[0], bookTicker, tripletsData);
+                let usdProfit = new Decimal(0);
+                if (profit.gt(1)) {
+                    //usdProfit = convertFinalAmount(strategyVars, amount.mul(profit.sub(1)), triplet[0], bookTicker, tripletsData);
+                    usdProfit = convertFinalAmount(strategyVars, amount.sub(fees).sub(initialAmount), triplet[0], bookTicker, tripletsData);
+                    //initialUsdAmount = finalUsdAmount.toNumber();
                 }
-                let feesPairBase = previousAmount.mul(new Decimal(feesPercentage));
-                let feesTripletBase = new Decimal(0);
-                if (j === 0) {
-                    tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.quote;
-                    feesTripletBase = feesPairBase;
-                    reversedPrices.push(askPrice);
-                }
-                else {
-                    let tripletBasePrice = reversedPrices.reduce((a, b)=> a.mul(b), new Decimal(1));
-                    feesTripletBase = feesPairBase.mul(tripletBasePrice);
-                    if (j === 1) reversedPrices.push(askPrice);
-                }
-                feesPairBase = feesPairBase.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN);
-                feesTripletBase = feesTripletBase.toDecimalPlaces(tripletBaseAmountPrecision, Decimal.ROUND_DOWN);
-
-                orders.push({
-                    order_id: shortId.generate(),
-                    pair: mdp,
-                    side: 'buy',
-                    amount: amount.toNumber(),
-                    price: askPrice.toNumber(),
-                    fees_percentage: feesPercentage,
-                    fees_pair_base: feesPairBase.toNumber(),
-                    fees_triplet_base: feesTripletBase.toNumber(),
-                    link: `https://www.binance.com/en/trade/${mdp.replace('/', '_')}`,
-                    total: previousAmount.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.quote, Decimal.ROUND_DOWN).toNumber(),
-                    order_date: DateUtils.now()
+                trades.push({
+                    trade_id: shortId.generate(),
+                    exchange: "BNB",
+                    trade_date: DateUtils.now(),
+                    trade_num: i,
+                    triplet: triplet.join("-"),
+                    tripletId,
+                    initial_amount: initialAmount.toNumber(),
+                    final_amount: amount.toNumber(),
+                    initial_usd_amount: initialUsdAmount,
+                    final_usd_amount: finalUsdAmount.toNumber(),
+                    fees : fees.toNumber(),
+                    bnb_fees: bnbFees.toNumber(),
+                    profit: profit.toNumber(),
+                    usd_profit: usdProfit.toNumber(),
+                    orders,
+                    time: Date.now() - start,
                 });
+                if (profit.gt(1)) {
+                    //usdProfit = convertFinalAmount(strategyVars, amount.mul(profit.sub(1)), triplet[0], bookTicker, tripletsData);
+                    //usdProfit = convertFinalAmount(strategyVars, amount.sub(fees).sub(initialAmount), triplet[0], bookTicker, tripletsData);
+                    initialUsdAmount = finalUsdAmount.toNumber();
+                }
+
             }
+
         }
 
-        if(!fail){
-            //const fee = new Decimal(defaultFees).mul(3);
-            //const profit = amount.div(initialAmount).sub(fee);
-            const fees = orders
-                .map((o)=> new Decimal(o["fees_triplet_base"]))
-                .reduce((a, b)=> a.add(b), new Decimal(0));
-            const bnbFees = convertAmount(fees, triplet[0], "BNB", bookTicker, tripletsData);
-            const profit = (amount.sub(fees)).div(initialAmount);
-            const finalUsdAmount = convertFinalAmount(strategyVars, amount, triplet[0], bookTicker, tripletsData);
-            let usdProfit = new Decimal(0);
-            if (profit.gt(1)) {
-                //usdProfit = convertFinalAmount(strategyVars, amount.mul(profit.sub(1)), triplet[0], bookTicker, tripletsData);
-                usdProfit = convertFinalAmount(strategyVars, amount.sub(fees).sub(initialAmount), triplet[0], bookTicker, tripletsData);
-                initialUsdAmount = finalUsdAmount.toNumber();
-            }
-            trades.push({
-                trade_id: shortId.generate(),
-                exchange: "BNB",
-                trade_date: DateUtils.now(),
-                triplet: triplet.join("-"),
-                tripletId,
-                initial_amount: initialAmount.toNumber(),
-                final_amount: amount.toNumber(),
-                usd_initial_amount: initialUsdAmount,
-                usd_final_amount: finalUsdAmount.toNumber(),
-                fees : fees.toNumber(),
-                bnb_fees: bnbFees.toNumber(),
-                profit: profit.toNumber(),
-                usd_profit: usdProfit.toNumber(),
-                orders,
-                time: Date.now() - start,
+        let mdPairsTimes = [];
+        if (trades.length > 0) {
+            Object.keys(tripletsData["marketData"]["mdPairsData"])
+                .forEach((mdp) => {
+                    let mdpTime = trades.filter((t) => {
+                        return ((tripletsData["mdpToTriplets"][mdp] || []).includes(t["tripletId"]))
+                    }).map((t) => {
+                        return t["time"];
+                    }).reduce((a, b) => a+b, 0);
+                    mdPairsTimes.push({mdp: mdp, time: mdpTime});
+                });
+            mdPairsTimes.sort((a, b) => {
+                if (a.time > b.time) return -1;
+                else if (a.time < b.time) return 1;
+                return 0;
             });
 
         }
 
-    }
-
-    let mdPairsTimes = [];
-    if (trades.length > 0) {
-        Object.keys(tripletsData["marketData"]["mdPairsData"])
-            .forEach((mdp) => {
-                let mdpTime = trades.filter((t) => {
-                    return ((tripletsData["mdpToTriplets"][mdp] || []).includes(t["tripletId"]))
-                }).map((t) => {
-                    return t["time"];
-                }).reduce((a, b) => a+b, 0);
-                mdPairsTimes.push({mdp: mdp, time: mdpTime});
-            });
-        mdPairsTimes.sort((a, b) => {
-            if (a.time > b.time) return -1;
-            else if (a.time < b.time) return 1;
-            return 0;
-        });
-
-    }
-
-    return {trades, mdPairsTimes, nBTripletsToCheck, initialUsdAmount};
+        resolve({trades, mdPairsTimes, nBTripletsToCheck, initialUsdAmount});
+        //return {trades, mdPairsTimes, nBTripletsToCheck, initialUsdAmount};
+    })
 
 }
 

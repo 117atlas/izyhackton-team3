@@ -27,6 +27,7 @@ const generateCombinations = async function () {
     let triplets = [];
     let currenciesToTriplets = {};
     let mdpToTriplets = {};
+    let tripletsToMdp = [];
     Object.keys(currenciesToMdp).forEach((x)=>{
         currenciesToMdp[x]
             .map((mdp) => {
@@ -54,15 +55,16 @@ const generateCombinations = async function () {
                             currenciesToTriplets[c] = currenciesToTriplets[c] || [];
                             currenciesToTriplets[c].push(id);
                         })
-                        let mdp = mdCurPairsToMdPairs[`${x}/${y}`];
-                        mdpToTriplets[mdp] = mdpToTriplets[mdp] || [];
-                        mdpToTriplets[mdp].push(id);
-                        mdp = mdCurPairsToMdPairs[`${y}/${z}`];
-                        mdpToTriplets[mdp] = mdpToTriplets[mdp] || [];
-                        mdpToTriplets[mdp].push(id);
-                        mdp = mdCurPairsToMdPairs[`${z}/${x}`];
-                        mdpToTriplets[mdp] = mdpToTriplets[mdp] || [];
-                        mdpToTriplets[mdp].push(id);
+                        let mdp1 = mdCurPairsToMdPairs[`${x}/${y}`];
+                        mdpToTriplets[mdp1] = mdpToTriplets[mdp1] || [];
+                        mdpToTriplets[mdp1].push(id);
+                        let mdp2 = mdCurPairsToMdPairs[`${y}/${z}`];
+                        mdpToTriplets[mdp2] = mdpToTriplets[mdp2] || [];
+                        mdpToTriplets[mdp2].push(id);
+                        let mdp3 = mdCurPairsToMdPairs[`${z}/${x}`];
+                        mdpToTriplets[mdp3] = mdpToTriplets[mdp3] || [];
+                        mdpToTriplets[mdp3].push(id);
+                        tripletsToMdp.push([mdp1, mdp2, mdp3]);
                     });
             });
     });
@@ -71,7 +73,8 @@ const generateCombinations = async function () {
         currenciesToMdp,
         triplets,
         currenciesToTriplets,
-        mdpToTriplets
+        mdpToTriplets,
+        tripletsToMdp
     }
 }
 
