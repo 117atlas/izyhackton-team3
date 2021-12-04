@@ -12,6 +12,8 @@ const Socket = require('../binance/socket');
 const Triplet = require('./triplet');
 const Profit = require('./profit');
 const Statistics = require('./statistics');
+const Profit2 = fork(__dirname + '/profit2.js');
+let precise = require('precise');
 
 const ccxt = require('ccxt');
 const IntraDay = require('../reports/intraday');
@@ -367,6 +369,23 @@ const StrategyStart = function (_delay = false) {
     }
 }
 
+Profit2.on('close', (code, signal) => {
+    console.log("Child is closed - ", JSON.stringify({code, signal}));
+});
+
+Profit2.on('exit', (code, signal) => {
+    console.log("Child is exited - ", JSON.stringify({code, signal}));
+});
+
+Profit2.on('error', (err) => {
+    console.log("Child is errored - ", err.message);
+    console.error(err);
+});
+
+Profit2.on('disconnect', () => {
+    console.log("Child is disconnected");
+});
+
 const Strategy = async function () {
     try {
         let tripletData = await Triplet.getTotalCombinations();
@@ -390,19 +409,18 @@ const Strategy = async function () {
             StrategyStart(2);
             return;
         }
-        let start = Date.now();
 
-        let child = fork(__dirname + '/profit2.js');
-
-        child.on('message', message => {
+        let timer = precise();
+        Profit2.on('message', message => {
             if (message["message"] === 'result') {
+                timer.stop();
                 let p = message["result"];
                 let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"],
-                INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
-                partNum = p["partNum"];
+                    INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
+                    partNum = p["partNum"];
 
                 console.log(new Date().toString(), " - profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
-                    strategyTime, " ms, ", p["trades"].length,
+                    strategyTime, " ms, ", p["trades"].length, " - timer childprocess parentprocess " + timer.diff() + " ms -" +
                     " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
                     " updated binance pairs.");
 
@@ -473,21 +491,8 @@ const Strategy = async function () {
             }
         });
 
-        child.on('close', (code, signal) => {
-            console.log("Child is closed - ", JSON.stringify({code, signal}));
-        });
-        child.on('exit', (code, signal) => {
-            console.log("Child is exited - ", JSON.stringify({code, signal}));
-        });
-        child.on('error', (err) => {
-            console.log("Child is errored - ", err.message);
-            console.error(err);
-        });
-        child.on('disconnect', () => {
-            console.log("Child is disconnected");
-        });
-
-        child.send({
+        timer.start();
+        Profit2.send({
             message: 'start',
             params: {strategyVars, tripletsData: tripletData, bookTicker: socketData["bookTicker"],
                 updatedMdpIds: socketData["updatedMdpIds"], varInitAmt: INITIAL_AMOUNT}
