@@ -401,7 +401,7 @@ const Strategy = async function () {
                 INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
                 partNum = p["partNum"];
 
-                console.log("profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
+                console.log(new Date().toString(), " - profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
                     strategyTime, " ms, ", p["trades"].length,
                     " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
                     " updated binance pairs.");
@@ -453,7 +453,8 @@ const Strategy = async function () {
                 let end = DateUtils.now();
                 dataForUi.strategyTime = strategyTime;
 
-                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
+                    JSON.stringify(dataForUi, null, 4));
                 console.log("Live (strategy) updates executed");
 
                 SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
