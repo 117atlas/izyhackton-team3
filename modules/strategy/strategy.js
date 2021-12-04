@@ -1,5 +1,5 @@
 let shortId = require('shortid');
-const { fork } = require('child_process');
+const { Worker } = require('worker_threads');
 
 const Variables = require('../variables/variables');
 const DateUtils = require('../dateutils');
@@ -12,7 +12,6 @@ const Socket = require('../binance/socket');
 const Triplet = require('./triplet');
 const Profit = require('./profit');
 const Statistics = require('./statistics');
-const Profit2 = fork(__dirname + '/profit2.js');
 let precise = require('precise');
 
 const ccxt = require('ccxt');
@@ -369,23 +368,6 @@ const StrategyStart = function (_delay = false) {
     }
 }
 
-Profit2.on('close', (code, signal) => {
-    console.log("Child is closed - ", JSON.stringify({code, signal}));
-});
-
-Profit2.on('exit', (code, signal) => {
-    console.log("Child is exited - ", JSON.stringify({code, signal}));
-});
-
-Profit2.on('error', (err) => {
-    console.log("Child is errored - ", err.message);
-    console.error(err);
-});
-
-Profit2.on('disconnect', () => {
-    console.log("Child is disconnected");
-});
-
 const Strategy = async function () {
     try {
         let tripletData = await Triplet.getTotalCombinations();
@@ -410,17 +392,18 @@ const Strategy = async function () {
             return;
         }
 
-        //let timer = precise();
+        const Profit2 = new Worker(__dirname + '/profit2.js');
+
+        let timer = precise();
         Profit2.on('message', message => {
             if (message["message"] === 'result') {
-                //timer.stop();
                 let p = message["result"];
                 let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"],
                     INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
                     partNum = p["partNum"];
 
                 console.log(new Date().toString(), " - profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
-                    strategyTime, " ms, ", p["trades"].length, " - timer childprocess parentprocess " + "0" + /*timer.diff()*/ + " ms -" +
+                    strategyTime, " ms, ", p["trades"].length, //" - timer childprocess parentprocess " + "0" + /*timer.diff() +*/ " ms -" +
                     " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
                     " updated binance pairs.");
 
@@ -464,35 +447,39 @@ const Strategy = async function () {
                     dataForUi.allWinners = false;
                 }
 
-
                 console.log(trades.length + " trades found and " + winners.length + " winners detected");
 
                 //dataForUi.newWinners = winners;
-                let end = DateUtils.now();
                 dataForUi.strategyTime = strategyTime;
 
-                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
-                    JSON.stringify(dataForUi, null, 4));
+                /*require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
+                    JSON.stringify(dataForUi, null, 4));*/
+
                 console.log("Live (strategy) updates executed");
 
                 SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
 
             }
             else if (message["message"] === 'done') {
-                console.log("Whole strategy ended ", (Date.now() - start), " ms");
+                timer.stop();
+                let diff = timer.diff() / 1000000;
+                console.log("Whole strategy ended ", diff, " ms");
                 StrategyStart(1);
-                //child.kill('SIGINT');
+                Profit2.terminate();
             }
             else if (message["message"] === 'error') {
+                timer.stop();
+                let diff = timer.diff() / 1000000;
+                console.log("Whole strategy ended ", diff, " ms");
                 console.log("Calculate profit error");
                 console.error(message["error_stack"]);
                 StrategyStart(2);
-                //child.kill('SIGINT');
+                Profit2.terminate();
             }
         });
 
         timer.start();
-        Profit2.send({
+        Profit2.postMessage({
             message: 'start',
             params: {strategyVars, tripletsData: tripletData, bookTicker: socketData["bookTicker"],
                 updatedMdpIds: socketData["updatedMdpIds"], varInitAmt: INITIAL_AMOUNT}

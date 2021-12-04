@@ -1,5 +1,7 @@
 let shortId = require('shortid');
 
+const {parentPort} = require('worker_threads');
+
 const {Decimal} = require('decimal.js');
 
 const DateUtils = require('../dateutils');
@@ -290,11 +292,11 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
         let useDefaultFees = strategyVars["useDefaultTradeFee"];
 
         if (updatedMdpIds.length === 0) {
-            process.send({
+            parentPort.postMessage({
                 message: 'done',
                 result: null
             });
-            //process.exit(0);
+            return;
         }
 
         let filteredTriplets = updatedMdpIds
@@ -312,11 +314,11 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
             .map(tripletId => {return {triplet: triplets[tripletId], index: tripletId}});
 
         if (filteredTriplets.length === 0) {
-            process.send({
+            parentPort.postMessage({
                 message: 'done',
                 result: null
             });
-            //process.exit(0);
+            return;
         }
 
         let nBTripletsToCheck = filteredTriplets.length;
@@ -531,31 +533,29 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
 
             let stTime = Date.now() - start;
 
-            process.send({
+            parentPort.postMessage({
                 message: 'result',
                 result: {trades, mdPairsTimes, nBTripletsToCheck, initialUsdAmount, stTime, nbPartitions, partNum: (j+1)}
             });
         }
 
-        process.send({
+        parentPort.postMessage({
             message: 'done',
             result: true
         });
-        //process.exit(0);
 
     } catch (e) {
-        process.send({
+        parentPort.postMessage({
             message: 'error',
             error_message: e.message,
             error_stack: e.stack,
             result: null
         });
-        //process.exit(0);
     }
 
 }
 
-process.on('message', message => {
+parentPort.on('message', message => {
     if (message["message"] === 'start') {
         let params = message["params"];
         console.log('Child process for profit calculation started');

@@ -19,9 +19,9 @@ const MESSAGES = {
     APP_RESTARTED: 'app-restarted'
 }
 
-const __authentication = (socket) => {
+const __authentication = (connection) => {
     return new Promise(async (resolve, reject) => {
-        let headers = socket.handshake.headers;
+        let headers = connection.handshake.headers;
         let token = headers["x-access-token"];
         let response = Response();
         if (!token) {
@@ -46,7 +46,7 @@ const __authentication = (socket) => {
     })
 };
 
-const __addClient = (uid, socket) => {
+const __addClient = (uid, connection) => {
     let i = -1, j = 0;
     if (clients==null) clients = [];
     for (const client of clients){
@@ -59,10 +59,10 @@ const __addClient = (uid, socket) => {
         }
     }
     if (i>=0){
-        clients[i].socket = socket;
+        clients[i].connection = connection;
     }
     else{
-        clients.push({uid: uid, socket: socket});
+        clients.push({uid: uid, connection: connection});
     }
 };
 
@@ -85,29 +85,29 @@ const __removeClient = (uid) => {
 };
 
 const __getClient = (uid) => {
-    let socket = null;
+    let connection = null;
     if (clients!=null){
         for (const client of clients){
             if (client.uid === uid){
-                socket = client.socket;
+                connection = client.connection;
                 break;
             }
         }
     }
-    return socket;
+    return connection;
 };
 
-const __disconnectClient = (uid, socket) => {
+const __disconnectClient = (uid, connection) => {
     __removeClient(uid);
-    console.log("Disconnected : " + socket.id)
-    socket.disconnect(true);
+    console.log("Disconnected : " + connection.id)
+    connection.disconnect(true);
 };
 
 const __sendData = (uid) => {
     setTimeout(()=>{
         let client = __getClient(uid);
         if (client != null && client.state === 'open') {
-            client.sendUTF(JSON.stringify({message: 'message'}));
+            client.sendUTF(JSON.stringify({message: 'welcome'}));
             //__sendData(uid);
         }
     }, 2000);
@@ -171,7 +171,7 @@ const init = (server) => {
 
         connection.on('message', function(message) {
             console.log("Message received from " + userId + ".");
-            console.log(message)
+            console.log(message);
             /*if (message.type === 'utf8') {
                 console.log('Received Message: ' + message.utf8Data);
                 connection.sendUTF(message.utf8Data);
@@ -193,9 +193,9 @@ const init = (server) => {
 };
 
 const send = (uid, message, data) => {
-    let client = __getClient(uid);
-    if (client != null) {
-        client.sendUTF(JSON.stringify(message, data));
+    let connection = __getClient(uid);
+    if (connection != null) {
+        connection.sendUTF(JSON.stringify({message, data}));
     }
 };
 
@@ -204,7 +204,7 @@ const broadcast = (message, data, exclude = null) => {
         exclude = [exclude];
     for (const client of clients) {
         if (exclude == null || !exclude.includes(client.uid))
-            client.sendUTF(JSON.stringify(message, data));
+            client.connection.sendUTF(JSON.stringify({message, data}));
     }
 }
 
