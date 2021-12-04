@@ -462,13 +462,13 @@ const Strategy = async function () {
             else if (message["message"] === 'done') {
                 console.log("Whole strategy ended ", (Date.now() - start), " ms");
                 StrategyStart(1);
-                child.kill('SIGINT');
+                //child.kill('SIGINT');
             }
             else if (message["message"] === 'error') {
                 console.log("Calculate profit error");
                 console.error(message["error_stack"]);
                 StrategyStart(2);
-                child.kill('SIGINT');
+                //child.kill('SIGINT');
             }
         });
 
