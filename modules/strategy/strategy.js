@@ -410,17 +410,17 @@ const Strategy = async function () {
             return;
         }
 
-        let timer = precise();
+        //let timer = precise();
         Profit2.on('message', message => {
             if (message["message"] === 'result') {
-                timer.stop();
+                //timer.stop();
                 let p = message["result"];
                 let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"],
                     INITIAL_AMOUNT = p["initialUsdAmount"], strategyTime = p["stTime"], nbPartitions = p["nbPartitions"],
                     partNum = p["partNum"];
 
                 console.log(new Date().toString(), " - profit calculation - ", "Partition ", partNum, "/", nbPartitions, " - ",
-                    strategyTime, " ms, ", p["trades"].length, " - timer childprocess parentprocess " + timer.diff() + " ms -" +
+                    strategyTime, " ms, ", p["trades"].length, " - timer childprocess parentprocess " + "0" + /*timer.diff()*/ + " ms -" +
                     " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
                     " updated binance pairs.");
 
