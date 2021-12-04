@@ -170,6 +170,8 @@ const init = (server) => {
         __addClient(userId, connection);
 
         connection.on('message', function(message) {
+            console.log("Message received from " + userId + ".");
+            console.log(message)
             /*if (message.type === 'utf8') {
                 console.log('Received Message: ' + message.utf8Data);
                 connection.sendUTF(message.utf8Data);
@@ -181,6 +183,7 @@ const init = (server) => {
         });
 
         connection.on('close', function(reasonCode, description) {
+            console.log("Client ", userId, " gone");
             __removeClient(userId);
         });
 
