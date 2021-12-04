@@ -108,7 +108,7 @@ const __sendData = (uid) => {
         let client = __getClient(uid);
         if (client != null && client.state === 'open') {
             client.sendUTF(JSON.stringify({message: 'message'}));
-            __sendData(uid);
+            //__sendData(uid);
         }
     }, 2000);
 }
@@ -125,10 +125,25 @@ const init = (server) => {
         return true;
     }
 
+    function dexwwwfurlenc(urljson){
+        let dstjson = {};
+        let ret;
+        let reg = /(?:^|&)(\w+)=(\w+)/g;
+        while((ret = reg.exec(urljson)) !== null){
+            dstjson[ret[1]] = ret[2];
+        }
+        return dstjson;
+    }
+
     function auth(request) {
-        let userId = request.httpRequest.headers["userid"];
-        let timestamp = request.httpRequest.headers["timestamp"];
-        let _sign = request.httpRequest.headers["sign"];
+        let resource = request.resource;
+        let params = resource.substring(resource.lastIndexOf("?")+1);
+        console.log(params);
+        params = dexwwwfurlenc(params);
+        console.log(params);
+        let userId = params["userid"];
+        let timestamp = params["timestamp"];
+        let _sign = params["sign"];
         //console.log({userId, timestamp, _sign});
         let token = process.env.TOKEN_SECRET;
         let s = userId + "$" + timestamp + "$" + token;
@@ -141,12 +156,12 @@ const init = (server) => {
             request.reject();
             console.log('Connection from origin ' + request.origin + ' rejected.');
             return;
-        }
+        }*/
         if(!auth(request)) {
             request.reject();
             console.log('Connection from origin ' + request.origin + ' rejected. Auth failed');
             return;
-        }*/
+        }
 
         let connection = request.accept('echo-protocol', request.origin);
         let userId = request.httpRequest.headers["userid"];
