@@ -117,6 +117,9 @@ const state = async function () {
     let currentState = AppState.APP_STATE;
     if (currentState == null) {
         currentState = await State.findOne({current: true}).exec();
+        if (currentState == null) {
+
+        }
         AppState.APP_STATE = currentState;
     }
     return Constants.done(null, {state: currentState == null ? null : currentState}, 0);

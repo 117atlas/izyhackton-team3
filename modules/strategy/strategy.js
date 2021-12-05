@@ -13,6 +13,7 @@ const Triplet = require('./triplet');
 const Profit = require('./profit');
 const Statistics = require('./statistics');
 let precise = require('precise');
+let Profit2 = null;
 
 const ccxt = require('ccxt');
 const IntraDay = require('../reports/intraday');
@@ -153,6 +154,9 @@ const StrategyOff = async function (closeSocketConnection = true) {
     SendAllWinners = true;
     WinnersObsPeriodReference = 0;
     Winners = [];
+    if (Profit2 != null) {
+        Profit2.terminate().then().catch();
+    }
     if (closeSocketConnection) {
         Socket.closeConnection();
     }
@@ -392,7 +396,7 @@ const Strategy = async function () {
             return;
         }
 
-        const Profit2 = new Worker(__dirname + '/profit2.js');
+        Profit2 = new Worker(__dirname + '/profit2.js');
 
         let timer = precise();
         Profit2.on('message', message => {
