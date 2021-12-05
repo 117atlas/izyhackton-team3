@@ -13,7 +13,7 @@ const Triplet = require('./triplet');
 const Profit = require('./profit');
 const Statistics = require('./statistics');
 let precise = require('precise');
-let Profit2 = null;
+let Profit2 = null, forceStopProfit2 = false;
 
 const ccxt = require('ccxt');
 const IntraDay = require('../reports/intraday');
@@ -155,7 +155,7 @@ const StrategyOff = async function (closeSocketConnection = true) {
     WinnersObsPeriodReference = 0;
     Winners = [];
     if (Profit2 != null) {
-        Profit2.terminate().then().catch();
+        forceStopProfit2 = true;
     }
     if (closeSocketConnection) {
         Socket.closeConnection();
@@ -462,6 +462,11 @@ const Strategy = async function () {
                 console.log("Live (strategy) updates executed");
 
                 SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
+
+                if (forceStopProfit2) {
+                    Profit2.terminate().then().catch();
+                    forceStopProfit2 = false;
+                }
 
             }
             else if (message["message"] === 'done') {
