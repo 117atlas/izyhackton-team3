@@ -9,7 +9,7 @@ const Router = require('./router/Router');
 
 router.post('/register', Auth.verifyAuth, async (req, res, next) => {
   let response = await Router(UsersController.register,
-      {username: req.body.username, email: req.body.email, password: req.body.password, role: req.body.role});
+      {username: req.body.username, email: req.body.email, password: req.body.password, role: "ADMIN"});
   res.send(response);
 })
 
