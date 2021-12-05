@@ -452,8 +452,8 @@ const Strategy = async function () {
                 //dataForUi.newWinners = winners;
                 dataForUi.strategyTime = strategyTime;
 
-                /*require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
-                    JSON.stringify(dataForUi, null, 4));*/
+                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
+                    JSON.stringify(dataForUi, null, 4));
 
                 console.log("Live (strategy) updates executed");
 

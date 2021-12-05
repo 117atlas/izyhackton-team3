@@ -515,15 +515,15 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
 
             let mdPairsTimes = [];
             if (trades.length > 0) {
-                Object.keys(tripletsData["marketData"]["mdPairsData"])
-                    .forEach((mdp) => {
-                        let mdpTime = trades.filter((t) => {
-                            return ((tripletsData["mdpToTriplets"][mdp] || []).includes(t["tripletId"]))
-                        }).map((t) => {
-                            return t["time"];
-                        }).reduce((a, b) => a+b, 0);
-                        mdPairsTimes.push({mdp: mdp, time: mdpTime});
+                let temp = {};
+                trades.forEach((trade)=>{
+                    tripletsData["tripletsToMdp"][trade["tripletId"]].forEach((mdp)=>{
+                        temp[mdp] = temp[mdp] || [];
+                        temp[mdp].push(trade["time"])
                     });
+                });
+                mdPairsTimes = Object.keys(temp)
+                    .map(mdp => {return {mdp: mdp, time: temp[mdp].reduce((a,b)=>a+b,0)}});
                 mdPairsTimes.sort((a, b) => {
                     if (a.time > b.time) return -1;
                     else if (a.time < b.time) return 1;

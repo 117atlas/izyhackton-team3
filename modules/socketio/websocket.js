@@ -138,9 +138,7 @@ const init = (server) => {
     function auth(request) {
         let resource = request.resource;
         let params = resource.substring(resource.lastIndexOf("?")+1);
-        console.log(params);
         params = dexwwwfurlenc(params);
-        console.log(params);
         let userId = params["userid"];
         let timestamp = params["timestamp"];
         let _sign = params["sign"];
@@ -164,7 +162,10 @@ const init = (server) => {
         }
 
         let connection = request.accept('echo-protocol', request.origin);
-        let userId = request.httpRequest.headers["userid"];
+        let resource = request.resource;
+        let params = resource.substring(resource.lastIndexOf("?")+1);
+        params = dexwwwfurlenc(params);
+        let userId = params["userid"];
         console.log('Connection accepted.' + (userId == null ? "": userId));
 
         __addClient(userId, connection);

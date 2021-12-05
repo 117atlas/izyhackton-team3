@@ -27,6 +27,7 @@
     "mongoose": "^6.0.13",
     "morgan": "~1.9.1",
     "nodemon": "^2.0.15",
+    "ping": "^0.4.1",
     "precise": "^1.1.0",
     "pug": "2.0.0-beta11",
     "shortid": "^2.2.16",

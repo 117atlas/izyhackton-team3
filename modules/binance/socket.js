@@ -1,4 +1,5 @@
 let WebSocketClient = require('websocket').client;
+let ping = require("ping");
 
 const AppState = require('../applauncher/appdata');
 
@@ -53,12 +54,14 @@ const __clearLogsTicker = async function () {
 
 const wsPing = function () {
     if (SocketData["ws"] != null && SocketData["ws"].state === 'open') {
-        wsPingId = setTimeout(()=>{
-            wsPingStart = Date.now();
-            SocketData["ws"].ping(JSON.stringify({u: 42042042, s: "XXXYYY", b: 0, a: 0, B: 0, A: 0}));
-            console.log("WS Ping Sent");
+        wsPingId = setTimeout(async () => {
+            for (let i=0; i<4; i++) {
+                const result = await ping.promise.probe('api.binance.com', {});
+                console.log("API Binance com pinged ", result["time"], " ms");
+                SocketData.pingBinanceLags = SocketData.pingBinanceLags.concat(result["times"]);
+            }
+            wsPing();
         }, 1000);
-        console.log("WS Ping Pong scheduled");
     }
 }
 
@@ -128,8 +131,8 @@ const openConnection = function (callback, notifier, reconnection = false) {
                         askPrice: a,
                         askQty: A,
                     };
-                    if (!SocketData.updatedMdpIds.includes(s)){
-                        SocketData.updatedMdpIds.push(s);
+                    if (!SocketData.updatedMdpIds.map(x => x["s"]).includes(s)){
+                        SocketData.updatedMdpIds.push({s: s, t: Date.now()});
                     }
                 }
             }
@@ -140,20 +143,10 @@ const openConnection = function (callback, notifier, reconnection = false) {
             connection.pong(new Buffer(""));
         });
 
-        /*connection.on('pong', function(data) {
-            console.log("Pong received for binance")
-            if (wsPingStart > 1000000) {
-                SocketData.pingBinanceLags.push(Date.now() - wsPingStart);
-                wsPingStart = 0;
-            }
-            console.log(SocketData.pingBinanceLags);
-            wsPing();
-        });*/
-
         if (callback != null)
             callback(null, AppState.APP_STATE_VALUES.ON);
 
-        //wsPing();
+        wsPing();
 
     });
 
@@ -217,9 +210,14 @@ const getData = function () {
 }
 
 const getBookTickerData = function () {
+    let _umi = SocketData.updatedMdpIds;
+    let now = Date.now();
+    console.log("UMI length before = ", _umi.length);
+    _umi = _umi.filter(x => x["t"] > now - 1000).map(x => x["s"]);
+    console.log("UMI length after = ", _umi.length);
     let data = {
         bookTicker: SocketData.bookTicker,
-        updatedMdpIds: SocketData.updatedMdpIds
+        updatedMdpIds: _umi
     };
     SocketData.updatedMdpIds = [];
     return data;
@@ -229,7 +227,7 @@ const getSocketConnectionData = function () {
     let pingLag = -1;
     if (SocketData.pingBinanceLags.length > 0) {
         pingLag = SocketData.pingBinanceLags.reduce((a, b)=> a + b, 0);
-        pingLag = pingLag / SocketData.pingBinanceLags.length;
+        pingLag = pingLag / (2 * SocketData.pingBinanceLags.length);
     }
     SocketData.pingBinanceLags = [];
     let data = {
