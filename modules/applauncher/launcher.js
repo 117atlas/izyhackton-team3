@@ -14,6 +14,7 @@ const on = async function (user = null) {
         if (currentState != null && currentState["state"] === "ON") {
             return Constants.done(null, {state: currentState}, 0);
         }
+        await State.deleteMany({state: "CONNECTING"}).exec();
 
         await State.updateMany({current: true}, {current: false}, {new: true}).exec();
         let nState = new State();
