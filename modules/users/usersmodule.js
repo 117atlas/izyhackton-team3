@@ -73,6 +73,17 @@ const getUser = async function (params) {
     }
 }
 
+const getUsers = async function (params) {
+    try {
+        let users = await User.find({deleted_account: {$ne: true}})
+            .select('-password')
+            .exec();
+        return done(null, {users}, 0);
+    } catch (e) {
+        return done(e, null, -1);
+    }
+}
+
 const updateUser = async function (params) {
     let userId = params["user_id"], field = params["field"], value = params["value"], password = params["password"];
     try {
@@ -140,5 +151,5 @@ const deleteAccount = async function (params) {
 }
 
 module.exports = {
-    register, login, refreshToken, updateUser, updatePassword, getUser, deleteAccount
+    register, login, refreshToken, updateUser, updatePassword, getUser, getUsers, deleteAccount
 }

@@ -7,7 +7,7 @@ const UsersController = require('../modules/users/usersmodule');
 
 const Router = require('./router/Router');
 
-router.post('/register', Auth.verifyAuthSA, async (req, res, next) => {
+router.post('/register', Auth.verifyAuth, async (req, res, next) => {
   let response = await Router(UsersController.register,
       {username: req.body.username, email: req.body.email, password: req.body.password, role: req.body.role});
   res.send(response);
@@ -26,6 +26,11 @@ router.get('/refresh-token', Auth.verifyAuth, async function (req, res, next) {
 
 router.get('/', Auth.verifyAuth, async function (req, res, next) {
   let response = await Router(UsersController.getUser, {user_id: req.user});
+  res.send(response);
+});
+
+router.get('/all', Auth.verifyAuth, async function (req, res, next) {
+  let response = await Router(UsersController.getUsers, {});
   res.send(response);
 });
 
