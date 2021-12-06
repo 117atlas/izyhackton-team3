@@ -60,8 +60,8 @@ router.get('/end-of-day/:period/:id', async function (req, res, next) {
 });
 
 router.patch('/observation-period', async function(req, res, next) {
-    res.send({error: false, error_code: 0, error_message: null});
-    Launcher.changeObsPeriod(req.body["period"]).then();
+    let response = await Router(Launcher.changeObsPeriod, {user_id: req.user, period: req.body.period});
+    res.send(response);
 });
 
 module.exports = router;

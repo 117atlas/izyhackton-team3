@@ -5,76 +5,78 @@ const REFRESH_PERIOD = 5;
 let TRIPLET_DATA = null;
 
 const generateCombinations = async function () {
-    let marketData = await getMarketData(),
-        mdPairsData = marketData.mdPairsData, mdCurPairsToMdPairs = marketData.mdCurPairsToMdPairs;
-    let currenciesToMdp = {};
-    Object.keys(mdPairsData)
-        .map(key => {return key.split("/")})
-        // List of market data pairs separated as array
-        .flat()
-        // All currencies
-        .filter((value, index, arr)=> {
-            return arr.indexOf(value) === index;
-        })
-        // All currencies are listed in no doublons
-        .forEach((currency) => {
-            const curRelatedMarketData = Object.keys(mdPairsData)
-                .filter((mdKey) => mdPairsData[mdKey].base === currency || mdPairsData[mdKey].quote === currency);
-            if (curRelatedMarketData.length > 0) {
-                currenciesToMdp[currency] = curRelatedMarketData;
-            }
-        });
-    let triplets = [];
-    let currenciesToTriplets = {};
-    let mdpToTriplets = {};
-    let tripletsToMdp = [];
-    Object.keys(currenciesToMdp).forEach((x)=>{
-        currenciesToMdp[x]
-            .map((mdp) => {
-                let y = mdp.split("/")[0] === x ? mdp.split("/")[1] : mdp.split("/")[0];
-                return !currenciesToMdp[y] || currenciesToMdp[y].length === 0 ? null : y;
+    let marketData = await getMarketData();
+    if (marketData != null) {
+        let mdPairsData = marketData.mdPairsData, mdCurPairsToMdPairs = marketData.mdCurPairsToMdPairs;
+        let currenciesToMdp = {};
+        Object.keys(mdPairsData)
+            .map(key => {return key.split("/")})
+            // List of market data pairs separated as array
+            .flat()
+            // All currencies
+            .filter((value, index, arr)=> {
+                return arr.indexOf(value) === index;
             })
-            .filter((y) => y != null)
-            .forEach((y) => {
-                currenciesToMdp[y]
-                    .filter((mdp) => {
-                        return (mdp !== `${x}/${y}`) && (mdp !== `${y}/${x}`);
-                    })
-                    .map((mdp) => {
-                        let z = mdp.split("/")[0] === y ? mdp.split("/")[1] : mdp.split("/")[0];
-                        return !currenciesToMdp[z] || currenciesToMdp[z].length === 0 ? null : z;
-                    })
-                    .filter((z) => {
-                        //return z != null && currenciesToMdp[z].filter(mdp => (mdp === `${z}/${x}`) && (mdp !== `${x}/${z}`)).length > 0;
-                        return z != null && currenciesToMdp[z].filter(mdp => (mdp === `${z}/${x}`) || (mdp === `${x}/${z}`)).length > 0;
-                    })
-                    .forEach((z) => {
-                        triplets.push([x, y, z, x]);
-                        const id = triplets.length - 1;
-                        [x, y, z].forEach((c) => {
-                            currenciesToTriplets[c] = currenciesToTriplets[c] || [];
-                            currenciesToTriplets[c].push(id);
-                        })
-                        let mdp1 = mdCurPairsToMdPairs[`${x}/${y}`];
-                        mdpToTriplets[mdp1] = mdpToTriplets[mdp1] || [];
-                        mdpToTriplets[mdp1].push(id);
-                        let mdp2 = mdCurPairsToMdPairs[`${y}/${z}`];
-                        mdpToTriplets[mdp2] = mdpToTriplets[mdp2] || [];
-                        mdpToTriplets[mdp2].push(id);
-                        let mdp3 = mdCurPairsToMdPairs[`${z}/${x}`];
-                        mdpToTriplets[mdp3] = mdpToTriplets[mdp3] || [];
-                        mdpToTriplets[mdp3].push(id);
-                        tripletsToMdp.push([mdp1, mdp2, mdp3]);
-                    });
+            // All currencies are listed in no doublons
+            .forEach((currency) => {
+                const curRelatedMarketData = Object.keys(mdPairsData)
+                    .filter((mdKey) => mdPairsData[mdKey].base === currency || mdPairsData[mdKey].quote === currency);
+                if (curRelatedMarketData.length > 0) {
+                    currenciesToMdp[currency] = curRelatedMarketData;
+                }
             });
-    });
-    TRIPLET_DATA = {
-        marketData,
-        currenciesToMdp,
-        triplets,
-        currenciesToTriplets,
-        mdpToTriplets,
-        tripletsToMdp
+        let triplets = [];
+        let currenciesToTriplets = {};
+        let mdpToTriplets = {};
+        let tripletsToMdp = [];
+        Object.keys(currenciesToMdp).forEach((x)=>{
+            currenciesToMdp[x]
+                .map((mdp) => {
+                    let y = mdp.split("/")[0] === x ? mdp.split("/")[1] : mdp.split("/")[0];
+                    return !currenciesToMdp[y] || currenciesToMdp[y].length === 0 ? null : y;
+                })
+                .filter((y) => y != null)
+                .forEach((y) => {
+                    currenciesToMdp[y]
+                        .filter((mdp) => {
+                            return (mdp !== `${x}/${y}`) && (mdp !== `${y}/${x}`);
+                        })
+                        .map((mdp) => {
+                            let z = mdp.split("/")[0] === y ? mdp.split("/")[1] : mdp.split("/")[0];
+                            return !currenciesToMdp[z] || currenciesToMdp[z].length === 0 ? null : z;
+                        })
+                        .filter((z) => {
+                            //return z != null && currenciesToMdp[z].filter(mdp => (mdp === `${z}/${x}`) && (mdp !== `${x}/${z}`)).length > 0;
+                            return z != null && currenciesToMdp[z].filter(mdp => (mdp === `${z}/${x}`) || (mdp === `${x}/${z}`)).length > 0;
+                        })
+                        .forEach((z) => {
+                            triplets.push([x, y, z, x]);
+                            const id = triplets.length - 1;
+                            [x, y, z].forEach((c) => {
+                                currenciesToTriplets[c] = currenciesToTriplets[c] || [];
+                                currenciesToTriplets[c].push(id);
+                            })
+                            let mdp1 = mdCurPairsToMdPairs[`${x}/${y}`];
+                            mdpToTriplets[mdp1] = mdpToTriplets[mdp1] || [];
+                            mdpToTriplets[mdp1].push(id);
+                            let mdp2 = mdCurPairsToMdPairs[`${y}/${z}`];
+                            mdpToTriplets[mdp2] = mdpToTriplets[mdp2] || [];
+                            mdpToTriplets[mdp2].push(id);
+                            let mdp3 = mdCurPairsToMdPairs[`${z}/${x}`];
+                            mdpToTriplets[mdp3] = mdpToTriplets[mdp3] || [];
+                            mdpToTriplets[mdp3].push(id);
+                            tripletsToMdp.push([mdp1, mdp2, mdp3]);
+                        });
+                });
+        });
+        TRIPLET_DATA = {
+            marketData,
+            currenciesToMdp,
+            triplets,
+            currenciesToTriplets,
+            mdpToTriplets,
+            tripletsToMdp
+        }
     }
 }
 

@@ -19,6 +19,7 @@ const getMarketData = async function () {
         marketData = await __getMarketData();
         tickerData = await __getTickerData();
     } catch (e) {
+        console.log(e);
         marketData = null;
         tickerData = null
     }

@@ -16,7 +16,8 @@ const MESSAGES = {
     BINANCE_CONNECTION_ERROR: 'binance-connection-error',
     BINANCE_CONNECTION_SUCCESS: 'binance-connection-success',
     APP_STATE: 'app-state',
-    APP_RESTARTED: 'app-restarted'
+    APP_RESTARTED: 'app-restarted',
+    ERROR: 'error'
 }
 
 const __authentication = (connection) => {
@@ -113,6 +114,26 @@ const __sendData = (uid) => {
     }, 2000);
 }
 
+const onMessage = (msg) => {
+
+}
+
+const clientRequestsCallback = (userId, resMsgNames, resMsgData, bc, error) => {
+    if (error != null) {
+        let errorObject = {error_code: -1, error_message: ""};
+        if (typeof error === "number") errorObject.error_code = error;
+        else {
+            errorObject.error_message = error.message || error.toString();
+            ErrorCodes.ErrorMessage(errorObject);
+            send(userId, MESSAGES.ERROR, errorObject);
+        }
+    }
+    else {
+        if (bc) for (let i=0; i<resMsgNames.length; i++) broadcast(resMsgNames[i], resMsgData[i])
+        else for (let i=0; i<resMsgNames.length; i++) send(userId, resMsgNames[i], resMsgData[i]);
+    }
+}
+
 const init = (server) => {
     websocketServer = new WebSocketServer({
         httpServer: server,
@@ -170,9 +191,40 @@ const init = (server) => {
 
         __addClient(userId, connection);
 
-        connection.on('message', function(message) {
-            console.log("Message received from " + userId + ".");
-            console.log(message);
+        connection.on('message', function(msg) {
+            let message = JSON.parse(msg.utf8Data);
+            let name = message["message"], msgData = message["data"], user = message["user"];
+            console.log("Message received from " + userId + " - " + name);
+            if (name === 'app-on') {
+                const Launcher = require('../applauncher/launcher');
+                Launcher.on(null, (data, bc, error)=>{
+                    clientRequestsCallback(userId, [MESSAGES.APP_STATE], [data], bc, error);
+                }).then();
+            }
+            else if (name === 'app-off') {
+                const Launcher = require('../applauncher/launcher');
+                Launcher.off(null, (data, bc, error)=>{
+                    clientRequestsCallback(userId, [MESSAGES.APP_STATE], [data], bc, error);
+                }).then();
+            }
+            else if (name === 'app-restart') {
+                const Launcher = require('../applauncher/launcher');
+                Launcher.restart(null, (data, bc, error)=>{
+                    clientRequestsCallback(userId, [MESSAGES.APP_STATE, MESSAGES.APP_RESTARTED], [data, true], bc, error);
+                }).then();
+            }
+            else if (name === 'app-state') {
+                const Launcher = require('../applauncher/launcher');
+                Launcher.state((data, bc, error)=>{
+                    clientRequestsCallback(userId, [MESSAGES.APP_STATE], [data], bc, error);
+                }).then();
+            }
+            else if (name === 'change-observation-period') {
+                const Launcher = require('../applauncher/launcher');
+                Launcher.changeObsPeriod({period: msgData["period"]}, (data, bc, error)=>{
+                    clientRequestsCallback(userId, [MESSAGES.APP_STATE], [data], bc, error);
+                }).then();
+            }
             /*if (message.type === 'utf8') {
                 console.log('Received Message: ' + message.utf8Data);
                 connection.sendUTF(message.utf8Data);

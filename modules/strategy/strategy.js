@@ -1,5 +1,6 @@
 let shortId = require('shortid');
 const { Worker } = require('worker_threads');
+const { fork } = require('child_process');
 
 const Variables = require('../variables/variables');
 const DateUtils = require('../dateutils');
@@ -83,6 +84,10 @@ const endOfDayScheduler = function (autoProcessVars) {
 }
 
 const StrategyOn = async function (stateId) {
+    let state = await State.findOne({state_id: stateId}).exec();
+    if (state != null) {
+        WinnersObsPeriod = state["obs_period"];
+    }
     await Variables.updateStrategyVariables();
     let val = await Variables.validateStrategyVars();
     console.log(val);
@@ -316,24 +321,30 @@ const changeInitialAmount = async function (params) {
 
 
 const ChangeWinnersObsPeriod = async function (period) {
-    try {
-        if (!["hourly", "daily", "monthly", "yearly"].includes(period)) {
-            period = "daily";
-        }
-        if (period !== WinnersObsPeriod) {
-            let newRef = Date.now();
-            let _winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(newRef, period)}})
-                .populate({path: 'orders'})
-                .exec();
-            WinnersObsPeriod = period;
-            WinnersObsPeriodReference = newRef;
-            Winners = _winners;
-            SendAllWinners = true;
-        }
-    } catch (e) {
-        console.log("ChangeWinnersObsPeriod error - " + e.message);
-        console.error(e);
+    if (!["hourly", "daily", "monthly", "yearly"].includes(period)) {
+        period = "daily";
     }
+    let state = AppState.APP_STATE;
+    if (state == null) {
+        state = await State.findOne({current: true}).exec();
+        AppState.APP_STATE = state;
+    }
+    let currentObsPeriod = state == null ? WinnersObsPeriod : state["obs_period"];
+    if (period !== currentObsPeriod) {
+        let newRef = Date.now();
+        let _winners = await Trade.find({trade_date: {$gte: DateUtils.StartOfPeriodTime(newRef, period)}})
+            .populate({path: 'orders'})
+            .exec();
+        if (state != null) {
+            state = await State.findOneAndUpdate({_id: state._id}, {obs_period: period}, {new: true}).exec();
+            AppState.APP_STATE = state;
+        }
+        WinnersObsPeriod = period;
+        WinnersObsPeriodReference = newRef;
+        Winners = _winners;
+        SendAllWinners = true;
+    }
+    return state;
 }
 
 const StrategyStart = function (_delay = false) {
@@ -396,7 +407,7 @@ const Strategy = async function () {
             return;
         }
 
-        Profit2 = new Worker(__dirname + '/profit2.js');
+        Profit2 = fork(__dirname + '/profit2.js');
 
         let timer = precise();
         Profit2.on('message', message => {
@@ -456,15 +467,16 @@ const Strategy = async function () {
                 //dataForUi.newWinners = winners;
                 dataForUi.strategyTime = strategyTime;
 
-                require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
-                    JSON.stringify(dataForUi, null, 4));
+                /*require('fs').writeFileSync("./tests/logs/lives_updates_"+Date.now()+"_"+partNum+"_"+nbPartitions+".json",
+                    JSON.stringify(dataForUi, null, 4));*/
 
                 console.log("Live (strategy) updates executed");
 
                 SocketIO.broadcast(SocketIO.MESSAGES.STRATEGY, dataForUi);
 
                 if (forceStopProfit2) {
-                    Profit2.terminate().then().catch();
+                    //Profit2.terminate().then().catch();
+                    Profit2.kill('SIGINT');
                     forceStopProfit2 = false;
                 }
 
@@ -474,7 +486,7 @@ const Strategy = async function () {
                 let diff = timer.diff() / 1000000;
                 console.log("Whole strategy ended ", diff, " ms");
                 StrategyStart(1);
-                Profit2.terminate();
+                Profit2.kill('SIGINT');
             }
             else if (message["message"] === 'error') {
                 timer.stop();
@@ -483,12 +495,12 @@ const Strategy = async function () {
                 console.log("Calculate profit error");
                 console.error(message["error_stack"]);
                 StrategyStart(2);
-                Profit2.terminate();
+                Profit2.kill('SIGINT');
             }
         });
 
         timer.start();
-        Profit2.postMessage({
+        Profit2.send({
             message: 'start',
             params: {strategyVars, tripletsData: tripletData, bookTicker: socketData["bookTicker"],
                 updatedMdpIds: socketData["updatedMdpIds"], varInitAmt: INITIAL_AMOUNT}
@@ -694,7 +706,7 @@ const SecondUpdates = async function () {
         dataForUi.toFrontEndTime = Date.now();
         dataForUi.profitStats = await Statistics.profitStatistics(WinnersObsPeriod, Winners);
 
-        require('fs').writeFileSync("./tests/logs/seconds_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
+        //require('fs').writeFileSync("./tests/logs/seconds_updates_"+Date.now()+".json", JSON.stringify(dataForUi, null, 4));
         console.log("Second updates executed");
 
         // Send data to UI

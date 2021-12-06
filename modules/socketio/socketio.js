@@ -14,7 +14,8 @@ const MESSAGES = {
     BINANCE_CONNECTION_ERROR: 'binance-connection-error',
     BINANCE_CONNECTION_SUCCESS: 'binance-connection-success',
     APP_STATE: 'app-state',
-    APP_RESTARTED: 'app-restarted'
+    APP_RESTARTED: 'app-restarted',
+    ERROR: 'error'
 }
 
 const __authentication = (socket) => {

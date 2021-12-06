@@ -59,6 +59,8 @@ const wsPing = function () {
                 const result = await ping.promise.probe('api.binance.com', {});
                 console.log("API Binance com pinged ", result["time"], " ms");
                 SocketData.pingBinanceLags = SocketData.pingBinanceLags.concat(result["times"]);
+                if (SocketData.pingBinanceLags > 20)
+                    SocketData.pingBinanceLags = SocketData.pingBinanceLags.splice(0, SocketData.pingBinanceLags-20);
             }
             wsPing();
         }, 1000);

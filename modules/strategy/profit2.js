@@ -1,6 +1,6 @@
 let shortId = require('shortid');
 
-const {parentPort} = require('worker_threads');
+//const {parentPort} = require('worker_threads');
 
 const {Decimal} = require('decimal.js');
 
@@ -292,7 +292,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
         let useDefaultFees = strategyVars["useDefaultTradeFee"];
 
         if (updatedMdpIds.length === 0) {
-            parentPort.postMessage({
+            process.send({
                 message: 'done',
                 result: null
             });
@@ -314,7 +314,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
             .map(tripletId => {return {triplet: triplets[tripletId], index: tripletId}});
 
         if (filteredTriplets.length === 0) {
-            parentPort.postMessage({
+            process.send({
                 message: 'done',
                 result: null
             });
@@ -533,19 +533,19 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
 
             let stTime = Date.now() - start;
 
-            parentPort.postMessage({
+            process.send({
                 message: 'result',
                 result: {trades, mdPairsTimes, nBTripletsToCheck, initialUsdAmount, stTime, nbPartitions, partNum: (j+1)}
             });
         }
 
-        parentPort.postMessage({
+        process.send({
             message: 'done',
             result: true
         });
 
     } catch (e) {
-        parentPort.postMessage({
+        process.send({
             message: 'error',
             error_message: e.message,
             error_stack: e.stack,
@@ -555,7 +555,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
 
 }
 
-parentPort.on('message', message => {
+process.on('message', message => {
     if (message["message"] === 'start') {
         let params = message["params"];
         console.log('Child process for profit calculation started');
@@ -564,4 +564,3 @@ parentPort.on('message', message => {
     }
 })
 
-module.exports = calculateProfit;
