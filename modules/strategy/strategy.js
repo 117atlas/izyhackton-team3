@@ -102,7 +102,7 @@ const StrategyOn = async function (stateId) {
         .populate({path: 'orders'})
         .sort('trade_date trade_num')
         .exec();
-    //console.log(Winners);
+    console.log(Winners.length);
     INITIAL_AMOUNT = (await Variables.getVariable({name: "initialAmount"}))["data"]["initialAmount"];
     console.log(INITIAL_AMOUNT);
     await Triplet.generateCombinations();
