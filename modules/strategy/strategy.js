@@ -349,7 +349,7 @@ const ChangeWinnersObsPeriod = async function (period) {
 
 const StrategyStart = function (_delay = false) {
     if (AppState.APP_STATE != null && AppState.APP_STATE["state"] === AppState.APP_STATE_VALUES.ON) {
-        let delay = 500 * _delay;
+        let delay = 50 * _delay;
         StrategyTimeOutId = setTimeout(()=> {
             console.log("Strategy process go");
             Strategy().then();

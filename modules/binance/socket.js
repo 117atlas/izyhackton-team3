@@ -57,7 +57,7 @@ const wsPing = function () {
         wsPingId = setTimeout(async () => {
             for (let i=0; i<4; i++) {
                 const result = await ping.promise.probe('api.binance.com', {});
-                console.log("API Binance com pinged ", result["time"], " ms");
+                //console.log("API Binance com pinged ", result["time"], " ms");
                 SocketData.pingBinanceLags = SocketData.pingBinanceLags.concat(result["times"]);
                 if (SocketData.pingBinanceLags > 20)
                     SocketData.pingBinanceLags = SocketData.pingBinanceLags.splice(0, SocketData.pingBinanceLags-20);
@@ -214,9 +214,9 @@ const getData = function () {
 const getBookTickerData = function () {
     let _umi = SocketData.updatedMdpIds;
     let now = Date.now();
-    console.log("UMI length before = ", _umi.length);
+    //console.log("UMI length before = ", _umi.length);
     _umi = _umi.filter(x => x["t"] > now - 300).map(x => x["s"]);
-    console.log("UMI length after = ", _umi.length);
+    //console.log("UMI length after = ", _umi.length);
     let data = {
         bookTicker: SocketData.bookTicker,
         updatedMdpIds: _umi
