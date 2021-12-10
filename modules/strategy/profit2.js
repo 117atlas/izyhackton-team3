@@ -388,7 +388,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
                         }
                         amount = amount.toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
 
-                        let feesPercentage = defaultFees;
+                        let feesPercentage = defaultFees/100;
                         if (!useDefaultFees) {
                             feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
                         }
@@ -439,11 +439,11 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
                         const previousAmount = amount;
                         amount = amount.div(askPrice).toDecimalPlaces(tripletsData["marketData"]["mdPairsData"][mdp].precision.amount, Decimal.ROUND_DOWN);
 
-                        let feesPercentage = defaultFees;
+                        let feesPercentage = defaultFees/100;
                         if (!useDefaultFees) {
                             feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
                         }
-                        let feesPairBase = previousAmount.mul(new Decimal(feesPercentage/100));
+                        let feesPairBase = previousAmount.mul(new Decimal(feesPercentage));
                         let feesTripletBase = new Decimal(0);
                         if (j === 0) {
                             tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.quote;

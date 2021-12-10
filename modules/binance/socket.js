@@ -215,7 +215,7 @@ const getBookTickerData = function () {
     let _umi = SocketData.updatedMdpIds;
     let now = Date.now();
     //console.log("UMI length before = ", _umi.length);
-    _umi = _umi.filter(x => x["t"] > now - 1000).map(x => x["s"]);
+    _umi = _umi.filter(x => x["t"] > now - 300).map(x => x["s"]);
     //console.log("UMI length after = ", _umi.length);
     let data = {
         bookTicker: SocketData.bookTicker,
