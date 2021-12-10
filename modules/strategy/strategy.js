@@ -410,7 +410,7 @@ const Strategy = async function () {
         Profit2 = fork(__dirname + '/profit2.js');
 
         let timer = precise();
-        Profit2.on('message', message => {
+        Profit2.on('message', async (message) => {
             if (message["message"] === 'result') {
                 let p = message["result"];
                 let trades = p["trades"], mdPairsTimes = p["mdPairsTimes"], nBTripletsToCheck = p["nBTripletsToCheck"],
@@ -422,7 +422,7 @@ const Strategy = async function () {
                     " trades and ", p["nBTripletsToCheck"], " triplets checked & ", socketData["updatedMdpIds"].length,
                     " updated binance pairs.");
 
-                Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT}).then();//(r => console.log(r)).catch(e=>console.error(e));
+                await Variables.changeVariable({name: "initial_amount", new_value: INITIAL_AMOUNT});
                 StrategyData.tripletsNb.push(tripletData.triplets.length);
                 StrategyData.tripletsChecked.push(nBTripletsToCheck);
                 StrategyData.tripletsTimes.push(trades.length > 0 ? trades.map((t) => t.time).reduce((a, b)=> a+b, 0)/trades.length : 0);
