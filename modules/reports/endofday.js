@@ -121,7 +121,7 @@ module.exports = async (trades, _tickerData) => {
         let firstRowIndex = orderRowIndex - 3;
         let firstRow = worksheet.getRow(firstRowIndex);
         firstRow.getCell('num').value = tNum;
-        firstRow.getCell('gross_profit').value = (trade["final_usd_amount"] - trade["initial_usd_amount"]);
+        firstRow.getCell('gross_profit').value = trade["usd_gross_profit"];
         firstRow.getCell('net_profit').value = trade["usd_profit"];
         firstRow.getCell('bnb_comm').value = trade["bnb_fees"];
         firstRow.getCell('exchange').value = "BNB";

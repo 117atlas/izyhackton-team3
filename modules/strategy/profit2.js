@@ -443,7 +443,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
                         if (!useDefaultFees) {
                             feesPercentage = tripletsData["marketData"]["mdPairsData"][mdp].taker_fee;
                         }
-                        let feesPairBase = previousAmount.mul(new Decimal(feesPercentage));
+                        let feesPairBase = previousAmount.mul(new Decimal(feesPercentage/100));
                         let feesTripletBase = new Decimal(0);
                         if (j === 0) {
                             tripletBaseAmountPrecision = tripletsData["marketData"]["mdPairsData"][mdp].precision.quote;
@@ -483,9 +483,10 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
                     const bnbFees = convertAmount(fees, triplet[0], "BNB", bookTicker, tripletsData);
                     const profit = (amount.sub(fees)).div(initialAmount);
                     const finalUsdAmount = convertFinalAmount(strategyVars, amount, triplet[0], bookTicker, tripletsData);
-                    let usdProfit = new Decimal(0);
+                    let usdProfit = new Decimal(0), usdGrossProfit = new Decimal(0);
                     if (profit.gt(1)) {
                         usdProfit = convertFinalAmount(strategyVars, amount.sub(fees).sub(initialAmount), triplet[0], bookTicker, tripletsData);
+                        usdGrossProfit = convertFinalAmount(strategyVars, amount.sub(initialAmount), triplet[0], bookTicker, tripletsData);
                     }
                     trades.push({
                         trade_id: shortId.generate(),
@@ -502,6 +503,7 @@ const calculateProfit = function (strategyVars, tripletsData, bookTicker, update
                         bnb_fees: bnbFees.toNumber(),
                         profit: profit.toNumber(),
                         usd_profit: usdProfit.toNumber(),
+                        usd_gross_profit: usdGrossProfit.toNumber(),
                         orders,
                         time: Date.now() - start,
                     });

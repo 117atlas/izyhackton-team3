@@ -16,7 +16,8 @@ const TradeSchema = new Schema({
     fees: {type: Number},
     bnb_fees: {type: Number},
     profit: {type: Number},
-    usd_profit: {type: Number}
+    usd_profit: {type: Number},
+    usd_gross_profit: {type: Number}
 });
 
 module.exports = mongoose.model('Trades', TradeSchema);

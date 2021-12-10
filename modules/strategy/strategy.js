@@ -738,6 +738,7 @@ const saveWinners = function (winners) {
                 winner.bnb_fees = _winner.bnb_fees;
                 winner.profit = _winner.profit;
                 winner.usd_profit = _winner.usd_profit;
+                winner.usd_gross_profit = _winner.usd_gross_profit;
                 await winner.save();
             }
             resolve(true);
