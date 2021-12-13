@@ -36,11 +36,11 @@ const login = async function (params) {
         if (user == null) return done(null, null, ErrorCodes.CODES.USER_NOT_EXISTS);
         //else if (user["deleted_account"]) return done(null, null, ErrorCodes.CODES.USER_ACCOUNT_DELETED);
         else if (!user.isValidPassword(password)) return done(null, null, ErrorCodes.CODES.USER_INCORRECT_PASSWORD);
-        let token = Auth.generateToken(user);
+        let {token, expiresAt} = Auth.generateToken(user);
         user = await User.findOne({_id: user._id})
             .select('-password')
             .exec();
-        return done(null, {user, token}, 0);
+        return done(null, {user, token, token_expires_at: expiresAt}, 0);
     } catch (e) {
         console.log(e);
         return done(e, null, -1);

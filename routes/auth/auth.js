@@ -6,12 +6,14 @@ const Response = require('../../configs/response');
 const User = require('../../models/user');
 
 const generateToken = function (user) {
-    return jwt.sign({
-        exp: Math.floor(Date.now() / 1000) + (30 * 60),
+    let expiresAt = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+    let token = jwt.sign({
+        exp: expiresAt,
         data: {
             user_id: user.user_id
         }
     }, process.env.TOKEN_SECRET);
+    return {token, expiresAt};
 };
 
 const verifyAuth = async function (req, res, next) {
