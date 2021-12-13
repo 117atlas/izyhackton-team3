@@ -242,7 +242,7 @@ const StrategyAutoRestart = async function () {
     eodReport.report_id = shortId.generate();
     eodReport.period_timestamp = start;
     eodReport.period = DateUtils.PrintDateTime(start, false);
-    eodReport.url = "https://104.154.91.24/izyhackton/trades/end-of-day/" +
+    eodReport.url = process.env.APP_URL + "/trades/end-of-day/" +
         ___replaceAll(___replaceAll(fileName, ":", "_"), ":", "_") +
         "/" + eodReport.report_id;
     eodReport.filepath = filePath;
